@@ -5,7 +5,7 @@
 
 <script>
 import { computed as computed2 } from "vue"
-import { reactive, watch, shallowReactive, markRaw, ref, toValue, computed } from './hooks/reactivity';
+import { reactive, watch, shallowReactive, markRaw, ref, toValue, computed, customRef, toRefs, triggerRef } from './hooks/reactivity';
 
 
 export default {
@@ -14,19 +14,47 @@ export default {
   },
   created() {
 
-    const obj = ref(1)
+    const obj = ref({
+      num: 1
+    })
 
     console.log(obj);
 
-    const computedObj = computed(() => toValue(obj))
+    const computedObj = computed({
+      get: () => toValue(obj),
+      set(v) {
+        obj.value = v
+      }
+    })
+
+    const obj2 = customRef((track, trigger) => {
+      let _value = 1
+      let timer = null
+      return {
+        set(v) {
+          clearTimeout(timer)
+          timer = setTimeout(() => {
+            trigger()
+          }, 220)
+          _value = v;
+        },
+        get() {
+          track()
+          return _value
+        }
+      }
+    })
 
     watch(() => toValue(computedObj), (v) => {
       console.log(v);
+    }, {
+      deep: true
     })
 
-    console.log(computedObj);
-
     window.obj = obj;
+    window.computedObj = computedObj
+    window.obj2 = obj2
+    window.triggerRef = triggerRef
   }
 }
 </script>
