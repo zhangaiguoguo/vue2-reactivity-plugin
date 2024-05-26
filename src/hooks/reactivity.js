@@ -14,6 +14,7 @@ const __v_raw = "__v_raw"
 const __v_skip = "__v_skip"
 const __v_dep = "dep";
 const __v_ob = "__ob__"
+const __v_cut_skip = "__v_cut_skip"
 const ITERATE_KEY = Symbol("iterate");
 const __v_proxyRef = "value"
 const reactiveMps = new WeakMap()
@@ -44,31 +45,16 @@ function getVueDefaultHandler(key, customHandle) {
 
 if (versionFlag) {
   const ref2 = getVueDefaultHandler("ref")
-  const patchProxyKeys = ["value"]
-  const patchProxyKey = (target, key) => {
-    if (patchProxyKeys.indexOf(key) > -1) {
-      return target[key]
-    }
-    return target
-  }
   TransformReactive.install({
     observable: function (value) {
-      return new Proxy(ref2(value), {
-        get(target, key, receiver) {
-          target = patchProxyKey(target, key)
-          return Reflect.get(target, key, receiver)
-        },
-        set(target, key, value, receiver) {
-          target = patchProxyKey(target, key)
-          return Reflect.set(target, key, value, receiver)
-        }
-      })
+      return ref2(value).value
     },
     delete: getVueDefaultHandler("del"),
     set: getVueDefaultHandler("set")
   }, {
     proxyVm: {
-      $watch: getVueDefaultHandler("watch")
+      $watch: getVueDefaultHandler("watch"),
+      [__v_cut_skip]: true
     }
   })
 }
@@ -228,17 +214,36 @@ class RefImplComment {
 
 }
 
+function trackRefValue(target) {
+  track(target, "get", "value")
+}
+
+function triggerRefValue(target, newValue, oldValue) {
+  trigger(target, "set", "value", newValue, oldValue)
+}
+
+function getReactiveProxyMap(target) {
+  return reactiveProxyMap.get(target)
+}
+
+function setReactiveProxyMap(target, proxyTarget = target) {
+  reactiveProxyMap.set(target, {
+    proxyTarget: proxyTarget,
+    proxyObs: observable({ value: {} })
+  })
+  return reactiveProxyMap.get(target)
+}
+
 class RefImpl extends RefImplComment {
   constructor(value, shallow) {
     super(shallow)
     this._rawValue = value
     this._value = value
-    addReactive(this, 0)
+    setReactiveProxyMap(this)
   }
 
   get value() {
-    const { proxyTarget } = getReactiveRaw(this)
-    proxyTarget.value
+    trackRefValue(this)
     return this[__v_isShallow] ? toRaw(this._value) : toReactive(this._value)
   }
 
@@ -246,22 +251,18 @@ class RefImpl extends RefImplComment {
     if (!hasChanged(v, this._value)) {
       return false
     }
+    const oldValue = this._value
     this._value = v
-    const { proxyTarget } = getReactiveRaw(this)
-    proxyTarget.value++
+    triggerRefValue(this, v, oldValue)
     return v
   }
 
   get [__v_dep]() {
-    const { proxyTarget } = getReactiveRaw(this)
-    return getTargetObserverDep(proxyTarget)
+    return getTargetObserverDep(getReactiveProxyMap(this).proxyObs)
   }
 }
 
 function getTargetObserverDep(target) {
-  if (target[__v_isRef]) {
-    return target[__v_dep]
-  }
   return target[__v_ob] && target[__v_ob].dep
 }
 
@@ -332,6 +333,10 @@ function toString(target) {
   return target.toString()
 }
 
+function isCutSkip(target) {
+  return !!target[__v_cut_skip]
+}
+
 function isRef(target) {
   if (target) {
     try {
@@ -344,7 +349,7 @@ function isRef(target) {
 
 function patchWatchOptions(options, key) {
   if (hasOwn(options, key)) {
-    options[key] = true
+    options[options[key]] = true
   }
 }
 
@@ -361,10 +366,9 @@ function watch(fn, cb, options = {}) {
       ...options,
       flush: hasOwn(options, 'flush') ? options.flush : options.sync ? "sync" : options.post ? "post" : "pre"
     }
-    patchWatchOptions(options, 'sync');
-    patchWatchOptions(options, 'post');
-    patchWatchOptions(options, 'pre');
-    const _r = { stop: watchFn.apply(proxyVm, [fn, cb, _options]) }
+    patchWatchOptions(_options, 'flush');
+    const args = [fn, cb, _options]
+    const _r = { stop: isCutSkip(proxyVm) ? watchFn(...args) : watchFn.apply(proxyVm, args) }
     recordEffectScope(_r)
     return _r
   }
@@ -374,26 +378,28 @@ function createComputed2(getter, setter, options) {
   let _value = void 0
   const target = {
     get value() {
-      const _target = getReactiveRaw(target)
+      const _target = proxyCtx
       if (_target.watcher === null) {
         const eft = effect()
         eft.run(() => {
-          _value = getter()
-        }, () => {
-          _target.proxyTarget.value++
+          return getter()
+        }, (v) => {
+          const oldValue = _value
+          triggerRefValue(_target, v, oldValue)
+          _value = v
         })
         _target.watcher = eft.watcher
         target.effect = _target.watcher
       }
-      _target.proxyTarget.value;
+      trackRefValue(_target)
       return _value
     },
     set value(v) {
       return setter(v)
     }
   }
-  addReactive(target, 0)
-  getReactiveRaw(target).watcher = null
+  const proxyCtx = setReactiveProxyMap(target)
+  proxyCtx.watcher = null
   def(target, __v_isReadonly, !setter);
   def(target, __v_isRef, true);
   setter = setter || (() => warn('computed setter is not define'))
@@ -560,7 +566,6 @@ function track(target, type, key) {
     let returnResult = null
     const ctx = reactiveProxyMap.get(target)
     const vue2Observer = ctx.proxyObs
-    const proxyTarget = ctx.proxyTarget
     setVue2ObserverTargetReactive(vue2Observer, key)
     switch (type) {
       case "has":
@@ -578,7 +583,6 @@ function trigger(target, type, key, newValue, oldValue) {
   if (reactiveProxyMap.has(target)) {
     const ctx = reactiveProxyMap.get(target)
     const vue2Observer = ctx.proxyObs
-    const proxyTarget = ctx.proxyTarget
     const deps = [key]
     switch (type) {
       case "clear":
@@ -766,9 +770,7 @@ function createReactiveObject(target, isReadonly2, baseHandlers, collectionHandl
     return target;
   }
   const proxyTarget = new Proxy(target, targetType === 2 ? collectionHandlers : baseHandlers)
-  proxyMap.set(target, {
-    proxyTarget: proxyTarget, proxyObs: observable({})
-  })
+  setReactiveProxyMap(target, proxyTarget)
   return proxyTarget
 }
 
@@ -1216,7 +1218,7 @@ function effect(flush = "sync") {
       est = effectScope()
       const rs = est.run(() => {
         return watch(fn, cb, {
-          flush: flush
+          flush: flush,
         })
       })
       this.watcher = est.effects[0] || null
