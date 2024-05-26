@@ -1,3 +1,4 @@
+import * as vueDefaultHandlers from "vue"
 class TransformReactive {
   constructor() {
   }
@@ -11,7 +12,8 @@ const __v_isReadonly = "__v_isReadonly"
 const __v_isReactive = "__v_isReactive"
 const __v_raw = "__v_raw"
 const __v_skip = "__v_skip"
-const __v_ob__ = "__ob__"
+const __v_dep = "dep";
+const __v_ob = "__ob__"
 const ITERATE_KEY = Symbol("iterate");
 const __v_proxyRef = "value"
 const reactiveMps = new WeakMap()
@@ -21,6 +23,177 @@ TransformReactive.install = function (_app, _options = {}) {
   proxyVm = _options.proxyVm
   observable = _app.observable
 }
+
+const version = vueDefaultHandlers.version
+
+let versionFlag = false
+
+function validateVersion() {
+  const symbolRef = "."
+  return versionFlag = +version.slice(version.indexOf(symbolRef) + 1, version.indexOf(symbolRef, 2)) > 6
+}
+
+validateVersion()
+
+function getVueDefaultHandler(key, customHandle) {
+  if (key in vueDefaultHandlers) {
+    return vueDefaultHandlers[key]
+  }
+  return customHandle
+}
+
+if (versionFlag) {
+  const ref2 = getVueDefaultHandler("ref")
+  const patchProxyKeys = ["value"]
+  const patchProxyKey = (target, key) => {
+    if (patchProxyKeys.indexOf(key) > -1) {
+      return target[key]
+    }
+    return target
+  }
+  TransformReactive.install({
+    observable: function (value) {
+      return new Proxy(ref2(value), {
+        get(target, key, receiver) {
+          target = patchProxyKey(target, key)
+          return Reflect.get(target, key, receiver)
+        },
+        set(target, key, value, receiver) {
+          target = patchProxyKey(target, key)
+          return Reflect.set(target, key, value, receiver)
+        }
+      })
+    },
+    delete: getVueDefaultHandler("del"),
+    set: getVueDefaultHandler("set")
+  }, {
+    proxyVm: {
+      $watch: getVueDefaultHandler("watch")
+    }
+  })
+}
+
+const watchEffect = getVueDefaultHandler("watchEffect", function (effect, options) {
+  return createDoWatchEffect(effect, options)
+})
+
+const watchPostEffect = getVueDefaultHandler("watchPostEffect", function (effect, options) {
+  return createDoWatchEffect(effect, options, "post")
+})
+
+const watchSyncEffect = getVueDefaultHandler("watchSyncEffect", function (effect, options) {
+  return createDoWatchEffect(effect, options, "sync")
+})
+
+function createDoWatchEffect(effect, options, flush) {
+  return watch(effect, {
+    ...options,
+    immediate: true,
+    flush: flush || "pre"
+  })
+}
+
+console.log(vueDefaultHandlers);
+
+let activeEffectScope;
+class EffectScope {
+  constructor(detached = false) {
+    this.detached = detached;
+    /**
+     * @internal
+     */
+    this._active = true;
+    /**
+     * @internal
+     */
+    this.effects = [];
+    /**
+     * @internal
+     */
+    this.cleanups = [];
+    this.parent = activeEffectScope;
+    if (!detached && activeEffectScope) {
+      this.index = (activeEffectScope.scopes || (activeEffectScope.scopes = [])).push(
+        this
+      ) - 1;
+    }
+  }
+  get active() {
+    return this._active;
+  }
+  run(fn) {
+    if (this._active) {
+      const currentEffectScope = activeEffectScope;
+      try {
+        activeEffectScope = this;
+        return fn();
+      } finally {
+        activeEffectScope = currentEffectScope;
+      }
+    } else if (process.env.NODE_ENV !== "production") {
+      warn(`cannot run an inactive effect scope.`);
+    }
+  }
+  /**
+   * This should only be called on non-detached scopes
+   * @internal
+   */
+  on() {
+    activeEffectScope = this;
+  }
+  /**
+   * This should only be called on non-detached scopes
+   * @internal
+   */
+  off() {
+    activeEffectScope = this.parent;
+  }
+  stop(fromParent) {
+    if (this._active) {
+      let i, l;
+      for (i = 0, l = this.effects.length; i < l; i++) {
+        this.effects[i].stop();
+      }
+      for (i = 0, l = this.cleanups.length; i < l; i++) {
+        this.cleanups[i]();
+      }
+      if (this.scopes) {
+        for (i = 0, l = this.scopes.length; i < l; i++) {
+          this.scopes[i].stop(true);
+        }
+      }
+      if (!this.detached && this.parent && !fromParent) {
+        const last = this.parent.scopes.pop();
+        if (last && last !== this) {
+          this.parent.scopes[this.index] = last;
+          last.index = this.index;
+        }
+      }
+      this.parent = void 0;
+      this._active = false;
+    }
+  }
+}
+
+const effectScope = getVueDefaultHandler('effectScope2', function () {
+  return new EffectScope(false)
+})
+
+function recordEffectScope(effect, scope = activeEffectScope) {
+  if (scope && scope.active) {
+    scope.effects.push(effect);
+  }
+}
+
+const aaa = effectScope()
+
+aaa.run(() => {
+  watchSyncEffect(() => {
+    return vueDefaultHandlers.ref(1).value
+  })
+})
+
+console.log(aaa);
 
 function validate() {
   if (!app && !observable) {
@@ -70,58 +243,37 @@ class RefImpl extends RefImplComment {
     super(shallow)
     this._rawValue = value
     this._value = value
-    addReactive(this, value)
+    addReactive(this, 0)
   }
 
   get value() {
     const { proxyTarget } = getReactiveRaw(this)
-    return proxyTarget.value
+    proxyTarget.value
+    return this[__v_isShallow] ? toRaw(this._value) : toReactive(this._value)
   }
 
   set value(v) {
-    const { proxyTarget } = getReactiveRaw(this)
-    proxyTarget.value = v
+    if (!hasChanged(v, this._value)) {
+      return false
+    }
     this._value = v
+    const { proxyTarget } = getReactiveRaw(this)
+    proxyTarget.value++
     return v
   }
 
-  get [__v_ob__]() {
+  get [__v_dep]() {
     const { proxyTarget } = getReactiveRaw(this)
-    return proxyTarget[__v_ob__]
+    return getTargetObserverDep(proxyTarget)
   }
 }
 
-class Computed {
-  constructor(getter, setter) {
-    this[__v_isRef] = true
-    this.getter = getter
-    this.setter = setter || (() => warn('computed setter is not define'))
-    addReactive(this, undefined)
-    getReactiveRaw(this).watcher = null
-    this._value = undefined
+function getTargetObserverDep(target) {
+  if (target[__v_isRef]) {
+    return target[__v_dep]
   }
-
-  get value() {
-    const _target = getReactiveRaw(this)
-    if (_target.watcher === null) {
-      _target.watcher = watch(() => this.getter(), (v) => {
-        _target.proxyTarget.value = (this._value = v)
-      }, {
-        immediate: true, sync: true
-      })
-    }
-    return _target.proxyTarget.value
-  }
-
-  set value(v) {
-    return this.setter(v)
-  }
-
-  stop() {
-    getReactiveRaw(this).watcher.stop()
-  }
+  return target[__v_ob] && target[__v_ob].dep
 }
-
 
 class ObjectRefImpl extends RefImplComment {
   constructor(object, key, defaultValue, shallow) {
@@ -167,12 +319,12 @@ class CustomRef extends RefImplComment {
 }
 
 function warn(...args) {
-  app.util.warn(...args)
+  console.warn(`[Vue warn]:`, ...args);
 }
 
 function getProxyVmOptions(key) {
   if (!proxyVm) {
-    warn("install(_app, {proxyVm : VueComponent | Vue })")
+    warn("When installing plugins, it is necessary to configure proxyVm for proxy watcher Vue.use(TransformReactive, { proxyVm : VueComponent | VueApp })")
     return
   }
   return proxyVm[key]
@@ -209,16 +361,55 @@ function watch(fn, cb, options = {}) {
       const _target = caches[0]
       return (caches[index] === void 0 ? (caches[index] = isRef(_target)) : caches[index]) ? _target.value : _target
     }
-    return watchFn.apply(proxyVm, [fn, cb, options])
+    const _options = {
+      ...options,
+      flush: hasOwn(options, 'flush') ? options.flush : options.sync ? "sync" : options.post ? "post" : "pre"
+    }
+    const _r = watchFn.apply(proxyVm, [fn, cb, _options])
+    recordEffectScope({
+      stop: _r
+    })
+    return
   }
 }
 
-function computed(target) {
+function createComputed2(getter, setter, options) {
+  let _value = void 0
+  const target = {
+    get value() {
+      const _target = getReactiveRaw(target)
+      if (_target.watcher === null) {
+        _target.watcher = watch(() => getter(), (v) => {
+          _value = v
+          _target.proxyTarget.value++
+        }, {
+          immediate: true,
+          flush: "sync"
+        })
+        target.effect = _target.watcher
+      }
+      _target.proxyTarget.value;
+      return _value
+    },
+    set value(v) {
+      return setter(v)
+    }
+  }
+  addReactive(target, 0)
+  getReactiveRaw(target).watcher = null
+  def(target, __v_isReadonly, !setter);
+  def(target, __v_isRef, true);
+  setter = setter || (() => warn('computed setter is not define'))
+  return target
+}
+
+
+function computed(target, options) {
   if (validate()) {
     const done = isObject(target)
     const getter = done ? target.get : target
     const setter = done ? target.set : null
-    return new Computed(getter, setter)
+    return createComputed2(getter, setter, options)
   }
 }
 
@@ -288,6 +479,14 @@ const hasChanged = (value, oldValue) => !Object.is(value, oldValue);
 const isMap = (val) => toString(val) === '[object Map]';
 const isSet = (val) => toString(val) === '[object Set]';
 const isDate = (val) => toString(val) === '[object Date]';
+const def = (obj, key, value, writable = false) => {
+  Object.defineProperty(obj, key, {
+    configurable: true,
+    enumerable: false,
+    writable,
+    value
+  });
+};
 
 const reactiveProxyMap = new Map()
 
@@ -418,7 +617,7 @@ function trigger(target, type, key, newValue, oldValue) {
   }
 }
 
-class BaseReactiveHandlers {
+class BaseReactiveHandler {
   constructor(_isReadonly = false, _isShallow = false) {
     this[__v_isReadonly] = _isReadonly;
     this[__v_isShallow] = _isShallow;
@@ -467,7 +666,7 @@ class BaseReactiveHandlers {
   }
 }
 
-class MutableReactiveHandler extends BaseReactiveHandlers {
+class MutableReactiveHandler extends BaseReactiveHandler {
   constructor(_isShallow) {
     super(false, _isShallow)
   }
@@ -550,7 +749,10 @@ function getTargetType(value) {
   return value[__v_skip] || !Object.isExtensible(value) ? 0 /* INVALID */ : targetTypeMap(toRawType(value));
 }
 
-function createReactiveObject(target, isReadonly2, baseHandlers, collectionHandlers, proxyMap = reactiveProxyMap) {
+function createReactiveObject(target, isReadonly2, baseHandlers, collectionHandlers, proxyMap) {
+  if (!validate()) {
+    return target
+  }
   if (!isObject(target)) {
     warn(`value cannot be made reactive: ${String(target)}`);
     return target;
@@ -726,6 +928,18 @@ function createIterableMethod(method, isReadonly, isShallow) {
   };
 }
 
+const cacheStringFunction = (fn) => {
+  const cache = /* @__PURE__ */ Object.create(null);
+  return (str) => {
+    const hit = cache[str];
+    return hit || (cache[str] = fn(str));
+  };
+};
+
+const capitalize = cacheStringFunction((str) => {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+});
+
 function createReadonlyMethod(type) {
   return function (...args) {
     {
@@ -861,6 +1075,7 @@ const readonlyCollectionHandlers = {
 const shallowReadonlyCollectionHandlers = {
   get: /* @__PURE__ */ createInstrumentationGetter(true, true)
 };
+
 function checkIdentityKeys(target, has2, key) {
   const rawKey = toRaw(key);
   if (rawKey !== key && has2.call(target, rawKey)) {
@@ -871,7 +1086,38 @@ function checkIdentityKeys(target, has2, key) {
   }
 }
 
-const mutableReactiveHandler = new MutableReactiveHandler()
+class ReadonlyReactiveHandler extends BaseReactiveHandler {
+  constructor(isShallow2 = false) {
+    super(true, isShallow2);
+  }
+  set(target, key) {
+    if (process.env.NODE_ENV !== "production") {
+      warn(
+        `Set operation on key "${String(key)}" failed: target is readonly.`,
+        target
+      );
+    }
+    return true;
+  }
+  deleteProperty(target, key) {
+    if (process.env.NODE_ENV !== "production") {
+      warn(
+        `Delete operation on key "${String(key)}" failed: target is readonly.`,
+        target
+      );
+    }
+    return true;
+  }
+}
+
+const readonlyHandlers = /* @__PURE__ */ new ReadonlyReactiveHandler();
+
+const shallowReactiveHandlers = /* @__PURE__ */ new MutableReactiveHandler(
+  true
+);
+const shallowReadonlyHandlers = /* @__PURE__ */ new ReadonlyReactiveHandler(true);
+
+const mutableReactiveHandler = /* @__PURE__ */ new MutableReactiveHandler()
 
 function isReactive(value) {
   if (isReadonly(value)) {
@@ -892,10 +1138,21 @@ function isProxy(value) {
   return value ? !!value[__v_raw] : false;
 }
 
-function reactive(target) {
-  if (validate()) {
-    return createReactiveObject(target, false, mutableReactiveHandler, mutableCollectionHandlers)
+function markRaw(value) {
+  if (Object.isExtensible(value)) {
+    def(value, "__v_skip", true);
   }
+  return value;
+}
+
+function reactive(target) {
+  return createReactiveObject(
+    target,
+    false,
+    mutableReactiveHandler,
+    mutableCollectionHandlers,
+    reactiveProxyMap
+  )
 }
 function shallowReactive(target) {
   return createReactiveObject(
@@ -925,6 +1182,31 @@ function shallowReadonly(target) {
   );
 }
 
+function unref(ref2) {
+  return isRef(ref2) ? ref2.value : ref2;
+}
+
+const shallowUnwrapHandlers = {
+  get: (target, key, receiver) => unref(Reflect.get(target, key, receiver)),
+  set: (target, key, value, receiver) => {
+    const oldValue = target[key];
+    if (isRef(oldValue) && !isRef(value)) {
+      oldValue.value = value;
+      return true;
+    } else {
+      return Reflect.set(target, key, value, receiver);
+    }
+  }
+};
+
+function proxyRefs(objectWithRefs) {
+  return isReactive(objectWithRefs) ? objectWithRefs : new Proxy(objectWithRefs, shallowUnwrapHandlers);
+}
+
+function triggerRef(ref2) {
+
+}
+
 export {
   toRaw,
   ref,
@@ -940,7 +1222,18 @@ export {
   isRef,
   toValue,
   isReadonly,
-  computed
+  computed,
+  isShallow,
+  markRaw,
+  proxyRefs,
+  shallowRef,
+  customRef,
+  unref,
+  track,
+  trigger,
+  watchEffect,
+  watchPostEffect,
+  watchSyncEffect
 }
 
 export default TransformReactive

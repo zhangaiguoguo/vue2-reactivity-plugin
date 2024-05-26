@@ -1,11 +1,11 @@
 <template>
   <div id="app">
-    <img alt="Vue logo" src="./assets/logo.png">
   </div>
 </template>
 
 <script>
-import { reactive, watch } from './hooks/reactivity';
+import { computed as computed2 } from "vue"
+import { reactive, watch, shallowReactive, markRaw, ref, toValue, computed } from './hooks/reactivity';
 
 
 export default {
@@ -13,15 +13,25 @@ export default {
   components: {
   },
   created() {
-    const array = reactive(new Map())
 
-    console.log(array);
+    const obj = ref({
+      size: 1,
+      obj: {
+        a: 1
+      }
+    })
 
-    watch(() => array.size, (v) => {
+    console.log(obj);
+
+    const computedObj = computed(() => toValue(obj))
+
+    watch(() => toValue(computedObj), (v) => {
       console.log(v);
     })
 
-    window.array = array;
+    console.log(computedObj);
+
+    window.obj = obj;
   }
 }
 </script>

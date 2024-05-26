@@ -8,8 +8,8 @@ const app = new Vue({
   render: h => h(App),
 })
 
-Vue.use(TransformReactive, {
-  proxyVm: app
-})
+// Vue.use(TransformReactive, {
+//   proxyVm: app
+// })
 
 app.$mount('#app')
