@@ -379,6 +379,7 @@ function createComputed2(getter, setter, options) {
   const target = {
     get value() {
       const _target = proxyCtx
+      trackRefValue(_target)
       if (_target.watcher === null) {
         const eft = effect()
         eft.run(() => {
@@ -391,7 +392,6 @@ function createComputed2(getter, setter, options) {
         _target.watcher = eft.watcher
         target.effect = _target.watcher
       }
-      trackRefValue(_target)
       return _value
     },
     set value(v) {
@@ -566,6 +566,7 @@ function track(target, type, key) {
     let returnResult = null
     const ctx = reactiveProxyMap.get(target)
     const vue2Observer = ctx.proxyObs
+    console.log(vue2Observer);
     setVue2ObserverTargetReactive(vue2Observer, key)
     switch (type) {
       case "has":

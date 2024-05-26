@@ -14,12 +14,7 @@ export default {
   },
   created() {
 
-    const obj = ref({
-      size: 1,
-      obj: {
-        a: 1
-      }
-    })
+    const obj = ref(1)
 
     console.log(obj);
 
