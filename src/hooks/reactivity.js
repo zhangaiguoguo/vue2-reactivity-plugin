@@ -86,7 +86,7 @@ const watchSyncEffect = getVueDefaultHandler("watchSyncEffect", function (effect
 })
 
 function createDoWatchEffect(effect, options, flush) {
-  return watch(effect, {
+  return watch(effect, () => 1, {
     ...options,
     immediate: true,
     flush: flush || "pre"
@@ -175,7 +175,7 @@ class EffectScope {
   }
 }
 
-const effectScope = getVueDefaultHandler('effectScope2', function () {
+const effectScope = getVueDefaultHandler('effectScope', function () {
   return new EffectScope(false)
 })
 
@@ -184,16 +184,6 @@ function recordEffectScope(effect, scope = activeEffectScope) {
     scope.effects.push(effect);
   }
 }
-
-const aaa = effectScope()
-
-aaa.run(() => {
-  watchSyncEffect(() => {
-    return vueDefaultHandlers.ref(1).value
-  })
-})
-
-console.log(aaa);
 
 function validate() {
   if (!app && !observable) {
@@ -352,6 +342,12 @@ function isRef(target) {
   return false
 }
 
+function patchWatchOptions(options, key) {
+  if (hasOwn(options, key)) {
+    options[key] = true
+  }
+}
+
 function watch(fn, cb, options = {}) {
   const watchFn = getProxyVmOptions('$watch')
   if (watchFn) {
@@ -365,11 +361,12 @@ function watch(fn, cb, options = {}) {
       ...options,
       flush: hasOwn(options, 'flush') ? options.flush : options.sync ? "sync" : options.post ? "post" : "pre"
     }
-    const _r = watchFn.apply(proxyVm, [fn, cb, _options])
-    recordEffectScope({
-      stop: _r
-    })
-    return
+    patchWatchOptions(options, 'sync');
+    patchWatchOptions(options, 'post');
+    patchWatchOptions(options, 'pre');
+    const _r = { stop: watchFn.apply(proxyVm, [fn, cb, _options]) }
+    recordEffectScope(_r)
+    return _r
   }
 }
 
@@ -379,13 +376,13 @@ function createComputed2(getter, setter, options) {
     get value() {
       const _target = getReactiveRaw(target)
       if (_target.watcher === null) {
-        _target.watcher = watch(() => getter(), (v) => {
-          _value = v
+        const eft = effect()
+        eft.run(() => {
+          _value = getter()
+        }, () => {
           _target.proxyTarget.value++
-        }, {
-          immediate: true,
-          flush: "sync"
         })
+        _target.watcher = eft.watcher
         target.effect = _target.watcher
       }
       _target.proxyTarget.value;
@@ -1207,7 +1204,29 @@ function triggerRef(ref2) {
 
 }
 
+function effect(flush = "sync") {
+  let est;
+  return {
+    watcher: null,
+    stop() {
+      est && est.stop()
+    },
+    run(fn, cb) {
+      this.stop()
+      est = effectScope()
+      const rs = est.run(() => {
+        return watch(fn, cb, {
+          flush: flush
+        })
+      })
+      this.watcher = est.effects[0] || null
+      return rs
+    }
+  }
+}
+
 export {
+  EffectScope,
   toRaw,
   ref,
   toRefs,
@@ -1233,7 +1252,7 @@ export {
   trigger,
   watchEffect,
   watchPostEffect,
-  watchSyncEffect
+  watchSyncEffect, effectScope, effect
 }
 
 export default TransformReactive
