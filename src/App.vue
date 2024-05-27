@@ -14,9 +14,7 @@ export default {
   },
   created() {
 
-    const obj = ref({
-      num: 1
-    })
+    const obj = ref([])
 
     console.log(obj);
 
@@ -49,8 +47,8 @@ export default {
       console.log(v);
     }, {
       deep: true,
-      onTrack(){
-        console.log(arguments);
+      onTrigger(c){
+        console.log(c);
       }
     })
 

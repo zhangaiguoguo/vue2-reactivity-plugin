@@ -377,15 +377,45 @@ function setEffectDep(target, vue2Observer, key) {
   })
 }
 
-function triggerOnTrack(target, key) {
-  let reactiveTarget = target[key]
-  if(reactiveTarget.deps){
-    for(let [watcher] of reactiveTarget.deps){
-      if(watcher.onTrack) {
-        watcher.onTrack()
+function onTriggerEffectHandler(options, callback = (v) => v) {
+  const { handleKey, proxyTarget, observedTarget, type, key } = options
+  let reactiveTarget = observedTarget[key]
+  if (reactiveTarget.deps) {
+    for (let [watcher] of reactiveTarget.deps) {
+      if (watcher[handleKey]) {
+        watcher[handleKey](callback({
+          effect: watcher.effect || watcher,
+          type: type,
+          key: key,
+          target: proxyTarget
+        }))
       }
     }
   }
+}
+
+function triggerOnTrack(proxyTarget, observedTarget, type, key) {
+  onTriggerEffectHandler({
+    handleKey: "onTrack",
+    type: type,
+    proxyTarget: proxyTarget,
+    observedTarget: observedTarget,
+    key: key
+  })
+}
+
+function triggerOnTrigger(proxyTarget, observedTarget, type, key, newValue, oldValue) {
+  onTriggerEffectHandler({
+    handleKey: "onTrigger",
+    type: type,
+    proxyTarget: proxyTarget,
+    observedTarget: observedTarget,
+    key: key
+  }, (op) => {
+    op.newValue = newValue
+    op.oldValue = oldValue
+    return op
+  })
 }
 
 function track(target, type, key) {
@@ -404,7 +434,7 @@ function track(target, type, key) {
     if (activeEffect) {
       setEffectDep(activeEffect, vue2Observer, key)
     }
-    triggerOnTrack(vue2Observer, key)
+    triggerOnTrack(ctx.proxyTarget, vue2Observer, type, key)
     return returnResult ? void 0 : void 0
   }
 }
@@ -448,6 +478,7 @@ function trigger(target, type, key, newValue, oldValue) {
           deleteVue2ObserverTargetValue(vue2Observer, deps[i])
         }
       }
+      triggerOnTrigger(ctx.proxyTarget, vue2Observer, type, key, newValue, oldValue)
     }
   }
 }
@@ -459,6 +490,11 @@ function watch(fn, cb, options = {}) {
     parent: activeEffect,
     onTrigger: options.onTrigger,
     onTrack: options.onTrack,
+  }
+  if (versionFlag) {
+    options.onTrigger = (options.onTrack = function ({ effect }) {
+      watcher.effect = effect
+    })
   }
   activeEffect = watcher
   const watchFn = getProxyVmOptions('$watch')
