@@ -379,8 +379,8 @@ function setEffectDep(target, vue2Observer, key) {
 
 function onTriggerEffectHandler(options, callback = (v) => v) {
   const { handleKey, proxyTarget, observedTarget, type, key } = options
-  let reactiveTarget = observedTarget[key]
-  if (reactiveTarget.deps) {
+  let reactiveTarget = observedTarget
+  if (reactiveTarget && reactiveTarget.deps) {
     for (let [watcher] of reactiveTarget.deps) {
       if (watcher[handleKey]) {
         watcher[handleKey](callback({
@@ -434,8 +434,27 @@ function track(target, type, key) {
     if (activeEffect) {
       setEffectDep(activeEffect, vue2Observer, key)
     }
-    triggerOnTrack(ctx.proxyTarget, vue2Observer, type, key)
+    if (isArray(target) && key === "length") {
+      track(target, "iterate", ITERATE_KEY)
+    }
+    triggerOnTrack(ctx.proxyTarget, vue2Observer[key], type, key)
     return returnResult ? void 0 : void 0
+  }
+}
+
+function handlerIterateDeps(vue2Observer, key) {
+  const iterateDeps = vue2Observer[ITERATE_KEY] && vue2Observer[ITERATE_KEY].deps
+  if (iterateDeps) {
+    const currentTarget = vue2Observer[key]
+    if (!currentTarget.deps) {
+      createDep(currentTarget);
+    }
+    for (let [effect] of iterateDeps) {
+      currentTarget.deps.set(effect, 1)
+      effect.deps.set(currentTarget, {
+        key: key
+      })
+    }
   }
 }
 
@@ -471,14 +490,21 @@ function trigger(target, type, key, newValue, oldValue) {
         break
     }
     if (deps.length) {
+      let vue2ObserverTarget = vue2Observer[key];
       const deleteFlag = type === "delete"
       for (let i = 0; i < deps.length; i++) {
         setVue2ObserverTargetValue(vue2Observer, deps[i])
+        if(deps[i] === key){
+          vue2ObserverTarget = vue2Observer[deps[i]]
+        }
         if (deleteFlag) {
           deleteVue2ObserverTargetValue(vue2Observer, deps[i])
         }
       }
-      triggerOnTrigger(ctx.proxyTarget, vue2Observer, type, key, newValue, oldValue)
+      if (deps.indexOf(ITERATE_KEY) > -1) {
+        handlerIterateDeps(vue2Observer, key)
+      }
+      triggerOnTrigger(ctx.proxyTarget, vue2ObserverTarget, type, key, newValue, oldValue)
     }
   }
 }
