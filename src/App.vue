@@ -48,7 +48,10 @@ export default {
     watch(() => toValue(computedObj), (v) => {
       console.log(v);
     }, {
-      deep: true
+      deep: true,
+      onTrack(){
+        console.log(arguments);
+      }
     })
 
     window.obj = obj;

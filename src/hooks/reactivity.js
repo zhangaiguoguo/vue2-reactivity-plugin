@@ -16,6 +16,7 @@ const __v_dep = "dep";
 const __v_ob = "__ob__"
 const __v_cut_skip = "__v_cut_skip"
 const ITERATE_KEY = Symbol("iterate");
+const promiseThen = Promise.resolve()
 
 TransformReactive.install = function (_app, _options = {}) {
   app = _app
@@ -56,6 +57,13 @@ if (versionFlag) {
     }
   })
 }
+
+const nextTick = getVueDefaultHandler("nextTick", function () {
+  if (proxyVm.$nextTick) {
+    return proxyVm.$nextTick.apply(proxyVm, arguments)
+  }
+  return promiseThen.then(arguments[0])
+})
 
 const watchEffect = getVueDefaultHandler("watchEffect", function (effect, options) {
   return createDoWatchEffect(effect, options)
@@ -347,7 +355,112 @@ function patchWatchOptions(options, key) {
   }
 }
 
+function createDep(target) {
+  target.deps = new Map()
+  return target.deps
+}
+
+function setEffectDep(target, vue2Observer, key) {
+  if (!target.deps) {
+    createDep(target)
+  }
+  const value = vue2Observer[key]
+  if (!hasOwn(value, 'deps')) {
+    createDep(value)
+  }
+  value.deps.set(target, 1)
+  target.deps.set(value, {
+    key: key,
+    get [__v_dep]() {
+      return value[__v_ob][__v_dep]
+    }
+  })
+}
+
+function triggerOnTrack(target, key) {
+  let reactiveTarget = target[key]
+  if(reactiveTarget.deps){
+    for(let [watcher] of reactiveTarget.deps){
+      if(watcher.onTrack) {
+        watcher.onTrack()
+      }
+    }
+  }
+}
+
+function track(target, type, key) {
+  if (reactiveProxyMap.has(target)) {
+    let returnResult = null
+    const ctx = reactiveProxyMap.get(target)
+    const vue2Observer = ctx.proxyObs
+    setVue2ObserverTargetReactive(vue2Observer, key)
+    switch (type) {
+      case "has":
+      case "get":
+      case "iterate":
+        returnResult = vue2Observer[key].value
+        break
+    }
+    if (activeEffect) {
+      setEffectDep(activeEffect, vue2Observer, key)
+    }
+    triggerOnTrack(vue2Observer, key)
+    return returnResult ? void 0 : void 0
+  }
+}
+
+function trigger(target, type, key, newValue, oldValue) {
+  if (reactiveProxyMap.has(target)) {
+    const ctx = reactiveProxyMap.get(target)
+    const vue2Observer = ctx.proxyObs
+    const deps = [key]
+    switch (type) {
+      case "clear":
+        deps.splice(0, 1, ITERATE_KEY)
+        deps.push("size")
+        for (let w of oldValue) {
+          deps.push(w[0])
+        }
+        oldValue.clear()
+        break
+      case "set":
+        break;
+      case "add":
+        if (!isArray(target)) {
+          if (isMap(target)) {
+          } else {
+          }
+        } else if (isIntegerKey(key)) {
+          deps.push("length")
+        }
+        if (ITERATE_KEY in vue2Observer) {
+          deps.push(ITERATE_KEY)
+        }
+        break
+      case "delete":
+        break
+    }
+    if (deps.length) {
+      const deleteFlag = type === "delete"
+      for (let i = 0; i < deps.length; i++) {
+        setVue2ObserverTargetValue(vue2Observer, deps[i])
+        if (deleteFlag) {
+          deleteVue2ObserverTargetValue(vue2Observer, deps[i])
+        }
+      }
+    }
+  }
+}
+
+let activeEffect;
+
 function watch(fn, cb, options = {}) {
+  let watcher = {
+    parent: activeEffect,
+    onTrigger: options.onTrigger,
+    onTrack: options.onTrack,
+  }
+  activeEffect = watcher
   const watchFn = getProxyVmOptions('$watch')
   if (watchFn) {
     const caches = [fn];
@@ -362,8 +475,15 @@ function watch(fn, cb, options = {}) {
     }
     patchWatchOptions(_options, 'flush');
     const args = [fn, cb, _options]
-    const _r = { stop: isCutSkip(proxyVm) ? watchFn(...args) : watchFn.apply(proxyVm, args) }
-    recordEffectScope(_r)
+    let _r;
+    try {
+      _r = { stop: isCutSkip(proxyVm) ? watchFn(...args) : watchFn.apply(proxyVm, args) }
+      recordEffectScope(_r)
+    } finally {
+      activeEffect = watcher.parent
+      watcher.parent = null
+    }
+    watcher.wer = _r
     return _r
   }
 }
@@ -561,66 +681,6 @@ function setVue2ObserverTargetValue(vue2Observer, key) {
 
 function deleteVue2ObserverTargetValue(vue2Observer, key) {
   delete vue2Observer[key]
-}
-
-function track(target, type, key) {
-  if (reactiveProxyMap.has(target)) {
-    let returnResult = null
-    const ctx = reactiveProxyMap.get(target)
-    const vue2Observer = ctx.proxyObs
-    setVue2ObserverTargetReactive(vue2Observer, key)
-    switch (type) {
-      case "has":
-      case "get":
-      case "iterate":
-        returnResult = vue2Observer[key].value
-        break
-    }
-    return returnResult ? void 0 : void 0
-  }
-}
-
-function trigger(target, type, key, newValue, oldValue) {
-  if (reactiveProxyMap.has(target)) {
-    const ctx = reactiveProxyMap.get(target)
-    const vue2Observer = ctx.proxyObs
-    const deps = [key]
-    switch (type) {
-      case "clear":
-        deps.splice(0, 1, ITERATE_KEY)
-        deps.push("size")
-        for (let w of oldValue) {
-          deps.push(w[0])
-        }
-        oldValue.clear()
-        break
-      case "set":
-        break;
-      case "add":
-        if (!isArray(target)) {
-          if (isMap(target)) {
-          } else {
-          }
-        } else if (isIntegerKey(key)) {
-          deps.push("length")
-        }
-        if (ITERATE_KEY in vue2Observer) {
-          deps.push(ITERATE_KEY)
-        }
-        break
-      case "delete":
-        break
-    }
-    if (deps.length) {
-      const deleteFlag = type === "delete"
-      for (let i = 0; i < deps.length; i++) {
-        setVue2ObserverTargetValue(vue2Observer, deps[i])
-        if (deleteFlag) {
-          deleteVue2ObserverTargetValue(vue2Observer, deps[i])
-        }
-      }
-    }
-  }
 }
 
 class BaseReactiveHandler {
@@ -1280,7 +1340,7 @@ export {
   trigger,
   watchEffect,
   watchPostEffect,
-  watchSyncEffect, effectScope, effect, triggerRef
+  watchSyncEffect, effectScope, effect, triggerRef, nextTick
 }
 
 export default TransformReactive
