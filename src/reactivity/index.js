@@ -448,11 +448,11 @@ function track(target, type, key) {
         }
         if (activeEffect) {
             setEffectDep(activeEffect, vue2Observer, key)
+            triggerOnTrack(ctx.proxyTarget, vue2Observer[key], type, key)
         }
         if (isArray(target) && key === "length") {
             track(target, "iterate", ITERATE_KEY)
         }
-        triggerOnTrack(ctx.proxyTarget, vue2Observer[key], type, key)
         return returnResult ? void 0 : void 0
     }
 }
