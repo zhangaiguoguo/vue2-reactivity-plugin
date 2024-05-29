@@ -1,6 +1,6 @@
 import Vue from 'vue'
 import App from './App.vue'
-import TransformReactive from '@/hooks/reactivity'
+import TransformReactive from '@/reactivity'
 
 Vue.config.productionTip = false
 // eslint-disable-next-line

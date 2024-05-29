@@ -1,61 +1,57 @@
 <template>
   <div id="app">
+    <div>
+      {{ computedCount }}
+    </div>
+    <div>
+      {{ state }}
+    </div>
+    <div>
+      <button @click="setCount()">count++</button>
+    </div>
+    <div>
+      <input v-model="customCount" />
+    </div>
+    <div>
+      <transition-group appear tag="div" name="slide-fade">
+        <div v-for="(item, index) in customCount" :key="index">
+          {{ item }}
+        </div>
+      </transition-group>
+    </div>
+    {{ num }}
   </div>
 </template>
 
 <script>
-import { computed as computed2 } from "vue"
-import { reactive, watch, shallowReactive, markRaw, ref, toValue, computed, customRef, toRefs, triggerRef } from './hooks/reactivity';
-
+import { toValue } from './reactivity';
+import { computedCount, setCount, state, customCount } from './test/test';
 
 export default {
   name: 'App',
   components: {
   },
+  data() {
+    return {
+      customCount,
+      num:1
+    }
+  },
   created() {
-
-    const obj = ref([])
-
-    console.log(obj);
-
-    const computedObj = computed({
-      get: () => toValue(obj),
-      set(v) {
-        obj.value = v
-      }
-    })
-
-    const obj2 = customRef((track, trigger) => {
-      let _value = 1
-      let timer = null
-      return {
-        set(v) {
-          clearTimeout(timer)
-          timer = setTimeout(() => {
-            trigger()
-          }, 220)
-          _value = v;
-        },
-        get() {
-          track()
-          return _value
-        }
-      }
-    })
-
-    watch(() => toValue(computedObj), (v) => {
-      console.log(v);
-    }, {
-      deep: true,
-      onTrigger(c){
-        console.log(c);
-      }
-    })
-
-    window.obj = obj;
-    window.computedObj = computedObj
-    window.obj2 = obj2
-    window.triggerRef = triggerRef
+    window.setNum = () => {
+      this.num++
+    }
+  },
+  computed: {
+    state() {
+      return state
+    },
+    computedCount() {
+      return toValue(computedCount)
+    }
+  },
+  methods: {
+    setCount
   }
 }
 </script>
@@ -68,5 +64,17 @@ export default {
   text-align: center;
   color: #2c3e50;
   margin-top: 60px;
+}
+
+.slide-fade-enter-active {
+  transition: all .3s ease;
+}
+.slide-fade-leave-active {
+  transition: all .8s cubic-bezier(1.0, 0.5, 0.8, 1.0);
+}
+.slide-fade-enter, .slide-fade-leave-to
+/* .slide-fade-leave-active below version 2.1.8 */ {
+  transform: translateX(10px);
+  opacity: 0;
 }
 </style>
