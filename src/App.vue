@@ -34,6 +34,7 @@
 
 <template>
   <div id="app">
+    <TestVue :key="computedCount" v-if="computedCount % 2" />
     <div>
       computedCount - {{ computedCount }}
     </div>
@@ -45,6 +46,8 @@
     <div>
       {{ state }}
     </div>
+    <br>
+    <div>countRef - {{ countRef }}</div>
     <br>
     <div>
       <button @click="setCount()">count++</button>
@@ -60,7 +63,7 @@
     <br>
     <div>
       <transition-group appear tag="div" name="slide-fade">
-        <div v-for="(item, index) in customCount" :key="index">
+        <div v-for="(item) in customCount" :key="+item">
           {{ item }}
         </div>
       </transition-group>
@@ -98,16 +101,18 @@
 
 <script>
 import { toValue } from './reactivity';
-import { computedCount, setCount, state, customCount, customCount2, addStateList } from './test/test';
-
+import { computedCount, setCount, state, customCount, customCount2, addStateList, countRef } from './test/test';
+import TestVue from '@/components/TestVue.vue';
 export default {
   name: 'App',
   components: {
+    TestVue
   },
   data() {
     return {
       customCount,
-      num: 1
+      num: 1,
+      countRef
     }
   },
   created() {

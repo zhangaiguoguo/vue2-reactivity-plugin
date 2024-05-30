@@ -38,6 +38,18 @@ function toRawType(target) {
     return toString2.call(target).slice(8, -1)
 }
 
+function isFunction(target) {
+    return typeof target === "function"
+}
+
+function isObject(target) {
+    return typeof target === "object" && target !== null
+}
+
+function toString(target) {
+    return target.toString()
+}
+
 export {
     __v_isRef,
     __v_isShallow,
@@ -60,5 +72,5 @@ export {
     isSet,
     isObject2,
     isDate,
-    def, getProto, toRawType, extend, MAP_KEY_ITERATE_KEY
+    def, getProto, toRawType, isFunction, isObject, toString, extend, MAP_KEY_ITERATE_KEY
 }

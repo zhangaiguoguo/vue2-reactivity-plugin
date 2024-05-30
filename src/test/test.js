@@ -1,4 +1,4 @@
-import { computed, customRef, reactive, toRaw, toVRef, toValue, useObserverHandle, watch, watchEffect } from "@/reactivity";
+import { computed, customRef, reactive, ref, toRaw, toVRef, toValue, useObserverHandle, watch, watchEffect } from "@/reactivity";
 
 const state = reactive({
     count: 1,
@@ -7,8 +7,13 @@ const state = reactive({
     ],
     listValue: "dome",
     listValueStatus: true,
-    mpa: new Map()
+    mpa: new Map(),
+    obj: {
+
+    }
 })
+
+const countRef = ref(1)
 
 // watch(() => {
 //     for (let w of state.mpa) {
@@ -71,7 +76,7 @@ watch(customCount, (v) => {
 })
 
 const computedCount = computed(() => {
-    return state.count * 2
+    return state.count
 })
 
 // watch(computedCount, (v) => {
@@ -111,9 +116,11 @@ const customCount2 = toVRef({
 
 window.customCount2 = customCount2
 
+window.countRef = countRef
+
 export {
     setCount,
     state,
     computedCount,
-    customCount, customCount2, addStateList
+    customCount, customCount2, addStateList,countRef
 }

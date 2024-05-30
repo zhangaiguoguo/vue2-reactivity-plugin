@@ -1,4 +1,4 @@
-import * as vueDefaultHandlers from "vue"
+import Vue, * as vueDefaultHandlers from "vue"
 import {
     __v_isRef,
     __v_isShallow,
@@ -19,25 +19,19 @@ import {
     hasChanged,
     isMap,
     isObject2,
-    def, getProto, toRawType,
+    def, getProto, toRawType, isFunction, isObject, toString,
     extend
 } from "./shared"
+
+let app, observable, proxyVm, versionFlag = false
 
 class TransformReactive {
     constructor() {
     }
 }
 
-let app, observable, proxyVm;
-TransformReactive.install = function (_app, _options = {}) {
-    app = _app
-    proxyVm = _options.proxyVm
-    observable = _app.observable
-}
-
 const version = vueDefaultHandlers.version || (vueDefaultHandlers.default && vueDefaultHandlers.default.version)
 
-let versionFlag = false
 
 function validateVersion() {
     const symbolRef = "."
@@ -52,22 +46,6 @@ function getVueDefaultHandler(key, customHandle) {
         return vueDefaultHandlers[key]
     }
     return customHandle
-}
-
-if (versionFlag) {
-    const ref2 = getVueDefaultHandler("ref")
-    TransformReactive.install({
-        observable: function (value) {
-            return ref2(value).value
-        },
-        delete: getVueDefaultHandler("del"),
-        set: getVueDefaultHandler("set")
-    }, {
-        proxyVm: {
-            $watch: getVueDefaultHandler("watch"),
-            [__v_cut_skip]: true
-        }
-    })
 }
 
 const nextTick = getVueDefaultHandler("nextTick", function () {
@@ -196,7 +174,7 @@ function recordEffectScope(effect, scope = activeEffectScope) {
 
 function validate() {
     if (!app && !observable) {
-        console.warn("error")
+        warn("Have you registered(TransformReactive) the plugin")
         return false
     }
     return true
@@ -339,18 +317,6 @@ function getProxyVmOptions(key) {
     return proxyVm[key]
 }
 
-function isFunction(target) {
-    return typeof target === "function"
-}
-
-function isObject(target) {
-    return typeof target === "object" && target
-}
-
-function toString(target) {
-    return target.toString()
-}
-
 function isCutSkip(target) {
     return !!target[__v_cut_skip]
 }
@@ -451,15 +417,15 @@ function trigger(target, type, key, newValue, oldValue) {
         if (type === "clear") {
             deps.splice(0, 1, ITERATE_KEY)
             deps.push("size")
-            for (let w of oldValue) {
-                deps.push(w[0])
+            for (let [key2] of oldValue) {
+                deps.push(key2)
             }
             oldValue.clear()
         } else if (key === "length" && isArray(target)) {
             const newLength = Number(newValue);
             for (var key2 in vue2Observer) {
                 if (!isSymbol(key2) && key2 >= newLength) {
-                    deps.push(key2);
+                    deps.push(key2)
                 }
             }
         } else {
@@ -492,6 +458,7 @@ function trigger(target, type, key, newValue, oldValue) {
                             deps.push(MAP_KEY_ITERATE_KEY);
                         }
                     }
+                    deleteDeps.push(key);
                     break
             }
         }
@@ -721,13 +688,13 @@ function useObserverHandle() {
 }
 
 
-const reactiveProxyMap = new Map()
+const reactiveProxyMap = new WeakMap()
 
-const shallowReadonlyMap = new Map()
+const shallowReadonlyMap = new WeakMap()
 
-const shallowReactiveMap = new Map()
+const shallowReactiveMap = new WeakMap()
 
-const readonlyMap = new Map()
+const readonlyMap = new WeakMap()
 
 function hasOwnProperty(key) {
     if (!isSymbol(key)) key = String(key);
@@ -781,17 +748,6 @@ function setVue2ObserverTargetReactive(vue2Observer, key) {
         return false
     }
     return true
-}
-
-function deleteVue2ObserverTargetValue(vue2Observer, key) {
-    const deps = vue2Observer[key] && vue2Observer[key].deps
-    if (deps) {
-        for (let [effect] of deps) {
-            effect.deps.delete(vue2Observer[key])
-        }
-        deps.clear()
-    }
-    delete vue2Observer[key]
 }
 
 class BaseReactiveHandler {
@@ -1406,7 +1362,7 @@ function triggerReactive(ref2) {
             for (let [w, v] of raw) {
                 trigger(raw, "set", w, v, v);
             }
-            trigger(raw, "set", 'size', void 0, raw.size,);
+            trigger(raw, "set", MAP_KEY_ITERATE_KEY, void 0, true);
         }
         trigger(raw, "set", ITERATE_KEY, void 0, true);
     }
@@ -1445,6 +1401,98 @@ function toVRef(target) {
     })
 }
 
+function dispatchState(state, key) {
+
+}
+
+function useState(target, vm) {
+    if (!isObject(vm) && !this) {
+        warn('useState(', target, ', vm?:object ) (vm || this) is can only be used on objects')
+        return
+    }
+    if (!isObject2(target)) {
+        warn('useState(target->', target, ') can only be used on objects')
+        return;
+    }
+    const _vm = vm || this
+    for (let k in target) {
+        _vm[k] = target[k]
+        Object.defineProperty(_vm, k, {
+            get() {
+                const value = target[k]
+                return toReactive(isRef(value) ? toValue(value) : value)
+            },
+            set(v) {
+                const value = target[k]
+                if (isRef(value)) {
+                    value.value = v
+                } else {
+                    target[k] = v
+                }
+            }
+        })
+    }
+    return function dispatch() {
+
+    }
+}
+
+const expose = {
+    ref,
+    customRef,
+    toRefs,
+    toRef,
+    watch,
+    reactive,
+    shallowReactive,
+    shallowReadonly,
+    readonly,
+    isProxy,
+    isReactive,
+    isRef,
+    toValue,
+    isReadonly,
+    computed,
+    isShallow,
+    markRaw,
+    proxyRefs,
+    shallowRef,
+    unref, useState
+}
+
+const VuePrototype = vueDefaultHandlers.default.prototype
+let installInit = false, vueUtil = null
+
+TransformReactive.install = function (_app, _options = {}) {
+    app = _app
+    proxyVm = _options.proxyVm
+    observable = _app.observable
+    vueUtil = _app.util
+    if (!installInit) {
+        const oldProto = Reflect.getPrototypeOf(VuePrototype)
+        Reflect.setPrototypeOf(VuePrototype, expose)
+        Reflect.setPrototypeOf(expose, oldProto)
+        installInit = true
+    }
+}
+
+if (versionFlag) {
+    const ref2 = getVueDefaultHandler("ref")
+    TransformReactive.install({
+        observable: function (value) {
+            return ref2(value).value
+        },
+        delete: getVueDefaultHandler("del"),
+        set: getVueDefaultHandler("set"),
+        util: vueDefaultHandlers.default.util
+    }, {
+        proxyVm: {
+            $watch: getVueDefaultHandler("watch"),
+            [__v_cut_skip]: true
+        }
+    })
+}
+
 export {
     EffectScope,
     toRaw,
@@ -1472,9 +1520,7 @@ export {
     trigger,
     watchEffect,
     watchPostEffect,
-    watchSyncEffect, effectScope, effect, triggerRef, nextTick, triggerReactive, useObserverHandle, toVRef
+    watchSyncEffect, effectScope, effect, triggerRef, nextTick, triggerReactive, useObserverHandle, toVRef, useState
 }
-
-console.log(reactiveProxyMap);
 
 export default TransformReactive
