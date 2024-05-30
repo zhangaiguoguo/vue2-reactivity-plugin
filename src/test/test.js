@@ -1,8 +1,30 @@
-import { computed, customRef, reactive, watch } from "@/reactivity";
+import { computed, customRef, reactive, toRaw, toVRef, toValue, useObserverHandle, watch, watchEffect } from "@/reactivity";
 
 const state = reactive({
-    count: 1
+    count: 1,
+    list: [
+
+    ],
+    listValue: "dome",
+    listValueStatus: true,
+    mpa: new Map()
 })
+
+// watch(() => {
+//     for (let w of state.mpa) {
+//         console.log(w);
+//     }
+//     return state.mpa.size
+// }, (v) => {
+//     console.log(v);
+// },{
+//     onTrigger(v){
+//         console.log(v);
+//     },
+//     onTrack(v){
+//         console.log(v);
+//     }
+// })
 
 function setCount(v) {
     if (arguments.length) {
@@ -10,6 +32,18 @@ function setCount(v) {
     } else {
         state.count++
     }
+}
+
+function addStateList() {
+    if (state.listValue == "" || state.listValue === "") {
+        state.listValueStatus = false
+        return
+    }
+    state.list.push({
+        value: state.listValue,
+        id: Date.now()
+    })
+    state.listValue = ""
 }
 
 const customCount = customRef((track, trigger) => {
@@ -40,16 +74,46 @@ const computedCount = computed(() => {
     return state.count * 2
 })
 
-watch(computedCount, (v) => {
-    console.log(v);
-}, {
-})
+// watch(computedCount, (v) => {
+//     console.log(v);
+// }, {
+// })
+
+// watchEffect(() => {
+
+//     for (let w in state) {
+//         console.log(state[w]);
+//     }
+
+//     console.log(toValue(customCount));
+
+// }, {
+// })
+
+window.state = state
 
 window.setCount = setCount
+
+let customCount2Value = 100
+
+const customCountHooks = useObserverHandle()
+
+const customCount2 = toVRef({
+    get value() {
+        customCountHooks[0]()
+        return customCount2Value
+    },
+    set value(v) {
+        customCount2Value = v
+        customCountHooks[1]()
+    }
+})
+
+window.customCount2 = customCount2
 
 export {
     setCount,
     state,
     computedCount,
-    customCount
+    customCount, customCount2, addStateList
 }

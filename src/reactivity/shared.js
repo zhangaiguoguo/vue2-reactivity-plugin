@@ -8,6 +8,7 @@ const __v_dep = "dep";
 const __v_ob = "__ob__"
 const __v_cut_skip = "__v_cut_skip"
 const ITERATE_KEY = Symbol("iterate");
+const MAP_KEY_ITERATE_KEY = Symbol("Map key iterate");
 const promiseThen = Promise.resolve()
 
 const isArray = Array.isArray
@@ -20,6 +21,7 @@ const isMap = (val) => toRawType(val) === 'Map';
 const isSet = (val) => toRawType(val) === 'Set';
 const isObject2 = (val) => toRawType(val) === 'Object';
 const isDate = (val) => toRawType(val) === 'Date';
+const extend = Object.assign;
 const def = (obj, key, value, writable = false) => {
     Object.defineProperty(obj, key, {
         configurable: true,
@@ -33,7 +35,7 @@ const getProto = (v) => Reflect.getPrototypeOf(v);
 const toString2 = Object.prototype.toString
 
 function toRawType(target) {
-  return toString2.call(target).slice(8, -1)
+    return toString2.call(target).slice(8, -1)
 }
 
 export {
@@ -58,5 +60,5 @@ export {
     isSet,
     isObject2,
     isDate,
-    def,getProto,toRawType
+    def, getProto, toRawType, extend, MAP_KEY_ITERATE_KEY
 }
