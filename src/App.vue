@@ -85,7 +85,7 @@
     </div>
     <br>
     <transition-group appear tag="div" name="slide-fade">
-      <div v-for="(item, index) in state.list" :key=item.id class="flex">
+      <div v-for="(item, index) in state.list" :key="item.id" class="flex">
         <div @dblclick="item.dblFlag = true" style="margin-right:10px;">
           <span v-if="!item.dblFlag">{{ item.value }}</span>
           <input v-else v-model="item.value" @blur="item.dblFlag = false" />

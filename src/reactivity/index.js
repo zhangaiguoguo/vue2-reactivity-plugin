@@ -20,7 +20,8 @@ import {
     isMap,
     isObject2,
     def, getProto, toRawType, isFunction, isObject, toString,
-    extend
+    extend,
+    isPromise
 } from "./shared"
 
 let app, observable, proxyVm, versionFlag = false
@@ -458,7 +459,6 @@ function trigger(target, type, key, newValue, oldValue) {
                             deps.push(MAP_KEY_ITERATE_KEY);
                         }
                     }
-                    deleteDeps.push(key);
                     break
             }
         }
@@ -575,22 +575,38 @@ function watch(fn, cb, options = {}) {
         _r = { stop: isCutSkip(proxyVm) ? watchFn(...args) : watchFn.apply(proxyVm, args) }
         recordEffectScope(_r)
         watcher.wer = _r
+        if (this && this instanceof vueDefaultHandlers.default) {
+            const wr = {
+                teardown() {
+                    _r.stop()
+                }
+            }
+            if (this._scope && !this._watchers) {
+                if (this._scope.effects) {
+                    this._scope.effects.push(wr)
+                }
+            } else if (this._watchers) {
+                this._watchers.push(wr)
+            }
+        }
         return _r
     }
 }
 
 function createComputed2(getter, setter, options) {
     let _value, currentValue;
+    const vm = this
     const proxyComputed = {
         get value() {
             const _target = proxyCtx
             if (_target.watcher === null) {
-                const eft = effect()
+                const eft = effect.apply(vm)
                 eft.run(() => {
                     currentValue = getter()
                     return {}
                 }, () => {
                     if (!hasChanged(currentValue, _value)) return
+                    console.log(1);
                     triggerRefValue(proxyComputed, currentValue, _value)
                     _value = currentValue
                 }, options || {})
@@ -618,7 +634,7 @@ function computed(target, options) {
         const done = isObject(target)
         const getter = done ? target.get : target
         const setter = done ? target.set : null
-        return createComputed2(getter, setter, options)
+        return createComputed2.apply(this, [getter, setter, options])
     }
 }
 
@@ -1370,6 +1386,7 @@ function triggerReactive(ref2) {
 
 function effect() {
     let est;
+    const _vm = this
     return {
         watcher: null,
         stop() {
@@ -1379,11 +1396,11 @@ function effect() {
             this.stop()
             est = effectScope()
             const rs = est.run(() => {
-                return watch(fn, cb, {
+                return watch.apply(_vm, [fn, cb, {
                     ...op,
                     flush: op.flush || 'sync',
                     immediate: true,
-                })
+                }])
             })
             this.watcher = est.effects[0] || null
             return rs
@@ -1401,10 +1418,6 @@ function toVRef(target) {
     })
 }
 
-function dispatchState(state, key) {
-
-}
-
 function useState(target, vm) {
     if (!isObject(vm) && !this) {
         warn('useState(', target, ', vm?:object ) (vm || this) is can only be used on objects')
@@ -1414,27 +1427,41 @@ function useState(target, vm) {
         warn('useState(target->', target, ') can only be used on objects')
         return;
     }
+    target = toReactive(target)
     const _vm = vm || this
     for (let k in target) {
-        _vm[k] = target[k]
+        _vm[k] = void 0;
         Object.defineProperty(_vm, k, {
-            get() {
+            get: function reactiveGetter() {
                 const value = target[k]
                 return toReactive(isRef(value) ? toValue(value) : value)
             },
-            set(v) {
+            set: function reactiveSetter(newValue) {
                 const value = target[k]
                 if (isRef(value)) {
-                    value.value = v
+                    value.value = newValue
                 } else {
-                    target[k] = v
+                    target[k] = newValue
                 }
             }
         })
     }
-    return function dispatch() {
-
+    function setTarget(newTarget, callback) {
+        Object.assign(target, newTarget)
+        callback()
     }
+    return [target, function (newTarget, callback) {
+        callback = callback || (() => void 0)
+        if (isFunction(newTarget)) {
+            setTarget(newTarget(), callback)
+        } else if (isPromise(newTarget)) {
+            newTarget.then((res) => {
+                setTarget(res, callback)
+            })
+        } else if (isObject(newTarget)) {
+            setTarget(newTarget, callback)
+        }
+    }]
 }
 
 const expose = {

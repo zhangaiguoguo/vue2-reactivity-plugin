@@ -1,11 +1,15 @@
 <script>
-import { useState } from '@/reactivity';
+import { useState, ref } from '@/reactivity';
 
 export default {
     data() {
-        useState({
-            num2: 1
-        }, this)
+        window.aaa = this.useState({
+            num2: 1,
+            num2Computed: this.computed(() => window.aaa[0].num2)
+        })
+        this.watch(() => aaa, (v) => {
+            console.log(v);
+        })
         return {
             num: 1
         }
@@ -21,6 +25,13 @@ export default {
         {{ num }}
         <div>
             <button @click="num++">点击</button>
+        </div>
+        <hr>
+        {{Date.now()}}
+        <br>
+        {{ num2 }}
+        <div>
+            <button @click="num2++">点击</button>
         </div>
     </div>
 </template>

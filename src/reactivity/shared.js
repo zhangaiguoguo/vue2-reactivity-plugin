@@ -42,6 +42,10 @@ function isFunction(target) {
     return typeof target === "function"
 }
 
+export function isPromise(target) {
+    return 'then' in target && isFunction(target.then);
+}
+
 function isObject(target) {
     return typeof target === "object" && target !== null
 }
