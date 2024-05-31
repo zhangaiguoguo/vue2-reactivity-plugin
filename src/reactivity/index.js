@@ -606,7 +606,6 @@ function createComputed2(getter, setter, options) {
                     return {}
                 }, () => {
                     if (!hasChanged(currentValue, _value)) return
-                    console.log(1);
                     triggerRefValue(proxyComputed, currentValue, _value)
                     _value = currentValue
                 }, options || {})
