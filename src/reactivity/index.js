@@ -1475,17 +1475,9 @@ const expose = {
     shallowReactive,
     shallowReadonly,
     readonly,
-    isProxy,
-    isReactive,
-    isRef,
-    toValue,
-    isReadonly,
     computed,
-    isShallow,
     markRaw,
-    proxyRefs,
-    shallowRef,
-    unref, useState
+    shallowRef, useState
 }
 
 const VuePrototype = vueDefaultHandlers.default.prototype
