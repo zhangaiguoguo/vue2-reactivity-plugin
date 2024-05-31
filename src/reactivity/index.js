@@ -365,7 +365,7 @@ function trackEffect(dep, debuOptions) {
     if (activeEffect) {
         const deps = dep.deps
         if (deps && deps.has(activeEffect)) {
-            activeEffect.onTrack && activeEffect.onTrack(debuOptions)
+            activeEffect.onTrack && activeEffect.onTrack(extend({effect: activeEffect}, debuOptions))
         }
     }
 }
@@ -533,7 +533,7 @@ function watch(fn, cb, options = {}) {
         onTrack: options.onTrack,
     }
     if (versionFlag) {
-        options.onTrigger = (options.onTrack = function ({ effect }) {
+        options.onTrigger = (options.onTrack = function ({effect}) {
             watcher.effect = effect
         })
     }
@@ -572,7 +572,7 @@ function watch(fn, cb, options = {}) {
         patchWatchOptions(_options, 'flush');
         const args = [proxyFn, cb, _options]
         let _r;
-        _r = { stop: isCutSkip(proxyVm) ? watchFn(...args) : watchFn.apply(proxyVm, args) }
+        _r = {stop: isCutSkip(proxyVm) ? watchFn(...args) : watchFn.apply(proxyVm, args)}
         recordEffectScope(_r)
         watcher.wer = _r
         if (this && this instanceof vueDefaultHandlers.default) {
@@ -589,7 +589,7 @@ function watch(fn, cb, options = {}) {
                 this._watchers.push(wr)
             }
         }
-        return _r
+        return _r.stop
     }
 }
 
@@ -758,7 +758,7 @@ const observableValue = [{}, {}].map(Object.freeze);
 
 function setVue2ObserverTargetReactive(vue2Observer, key) {
     if (!(hasOwn(vue2Observer, key))) {
-        vue2Observer[key] = observable({ value: observableValue[0] })
+        vue2Observer[key] = observable({value: observableValue[0]})
         vue2Observer[key]._index = 0
         return false
     }
@@ -932,7 +932,7 @@ function get(target, key, isReadonly = false, isShallow = false) {
         }
         track(rawTarget, "get", rawKey);
     }
-    const { has: has2 } = getProto(rawTarget);
+    const {has: has2} = getProto(rawTarget);
     const wrap = isShallow ? toShallow : isReadonly ? toReadonly : toReactive;
     if (has2.call(rawTarget, key)) {
         return wrap(target.get(key));
@@ -977,7 +977,7 @@ function add(value) {
 function set(key, value) {
     value = toRaw(value);
     const target = toRaw(this);
-    const { has: has2, get: get2 } = getProto(target);
+    const {has: has2, get: get2} = getProto(target);
     let hadKey = has2.call(target, key);
     if (!hadKey) {
         key = toRaw(key);
@@ -997,7 +997,7 @@ function set(key, value) {
 
 function deleteEntry(key) {
     const target = toRaw(this);
-    const { has: has2, get: get2 } = getProto(target);
+    const {has: has2, get: get2} = getProto(target);
     let hadKey = has2.call(target, key);
     if (!hadKey) {
         key = toRaw(key);
@@ -1054,8 +1054,8 @@ function createIterableMethod(method, isReadonly, isShallow) {
         return {
             // iterator protocol
             next() {
-                const { value, done } = innerIterator.next();
-                return done ? { value, done } : {
+                const {value, done} = innerIterator.next();
+                return done ? {value, done} : {
                     value: isPair ? [wrap(value[0]), wrap(value[1])] : wrap(value),
                     done
                 };
@@ -1445,10 +1445,12 @@ function useState(target, vm) {
             }
         })
     }
+
     function setTarget(newTarget, callback) {
         Object.assign(target, newTarget)
         callback()
     }
+
     return [target, function (newTarget, callback) {
         callback = callback || (() => void 0)
         if (isFunction(newTarget)) {
