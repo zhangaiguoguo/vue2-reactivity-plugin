@@ -5,7 +5,10 @@ export default {
     data() {
         window.aaa = this.useState({
             num2: 1,
-            num2Computed: this.computed(() => window.aaa[0].num2)
+            num2Computed: this.computed(() => window.aaa[0].num2),
+            obj: this.reactive({
+                a: 1
+            })
         })
         this.watch(() => aaa, (v) => {
             console.log(v);
@@ -27,7 +30,7 @@ export default {
             <button @click="num++">点击</button>
         </div>
         <hr>
-        {{Date.now()}}
+        {{ Date.now() }}
         <br>
         {{ num2 }}
         <div>
