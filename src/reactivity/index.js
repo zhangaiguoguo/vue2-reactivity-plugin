@@ -1508,7 +1508,8 @@ if (versionFlag) {
     }, {
         proxyVm: {
             $watch: getVueDefaultHandler("watch"),
-            [__v_cut_skip]: true
+            [__v_cut_skip]: true,
+            [__v_skip]: true
         }
     })
 }
