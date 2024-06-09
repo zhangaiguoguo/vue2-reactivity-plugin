@@ -10,7 +10,7 @@ export default {
                 a: 1
             })
         })
-        this.watch(() => aaa, (v) => {
+        this.watch(() => aaa[0].num2Computed, (v) => {
             console.log(v);
         })
         return {

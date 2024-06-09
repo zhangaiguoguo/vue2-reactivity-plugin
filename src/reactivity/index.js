@@ -24,7 +24,7 @@ import {
     isPromise
 } from "./shared"
 
-let app, observable, proxyVm, versionFlag = false
+let app, observable = Vue.observable, proxyVm, versionFlag = false
 
 class TransformReactive {
     constructor() {
