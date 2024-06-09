@@ -312,14 +312,13 @@ function warn(...args) {
 
 function getProxyVmOptions(key) {
     if (!proxyVm) {
-        warn("When installing plugins, it is necessary to configure proxyVm for proxy watcher Vue.use(TransformReactive, { proxyVm : VueComponent | VueApp })")
         return
     }
     return proxyVm[key]
 }
 
 function isCutSkip(target) {
-    return !!target[__v_cut_skip]
+    return !!target && target[__v_cut_skip]
 }
 
 function isRef(target) {
@@ -365,7 +364,7 @@ function trackEffect(dep, debuOptions) {
     if (activeEffect) {
         const deps = dep.deps
         if (deps && deps.has(activeEffect)) {
-            activeEffect.onTrack && activeEffect.onTrack(extend({ effect: activeEffect }, debuOptions))
+            activeEffect.onTrack && activeEffect.onTrack(extend({ effect: activeEffect.effect || activeEffect }, debuOptions))
         }
     }
 }
@@ -375,7 +374,9 @@ function triggerEffect2(dep, debuOptions) {
     if (deps) {
         for (let [watcher] of deps) {
             if (watcher.onTrigger) {
-                watcher.onTrigger(debuOptions)
+                watcher.onTrigger(extend({
+                    effect: watcher.effect || watcher
+                }, debuOptions))
             }
         }
     }
@@ -537,7 +538,7 @@ function watch(fn, cb, options = {}) {
             watcher.effect = effect
         })
     }
-    const watchFn = getProxyVmOptions('$watch')
+    const watchFn = getProxyVmOptions('$watch') || vueDefaultHandlers.watch || Vue.prototype.$watch
     if (watchFn) {
         const caches = [fn];
         const index = 1
@@ -1417,6 +1418,26 @@ function toVRef(target) {
     })
 }
 
+function defineReactive(proxyTarget, target, key) {
+    if (!hasOwn(proxyTarget, key)) {
+        proxyTarget[key] = void 0;
+    }
+    Object.defineProperty(proxyTarget, key, {
+        get: function reactiveGetter() {
+            const value = target[key];
+            return toReactive(isRef(value) ? toValue(value) : value)
+        },
+        set: function reactiveSetter(newValue) {
+            const value = target[key];
+            if (isRef(value)) {
+                value.value = newValue
+            } else {
+                target[key] = newValue
+            }
+        }
+    })
+}
+
 function useState(target, vm) {
     if (!isObject(vm) && !this) {
         warn('useState(', target, ', vm?:object ) (vm || this) is can only be used on objects')
@@ -1429,25 +1450,16 @@ function useState(target, vm) {
     target = toReactive(target)
     const _vm = vm || this
     for (let k in target) {
-        _vm[k] = void 0;
-        Object.defineProperty(_vm, k, {
-            get: function reactiveGetter() {
-                const value = target[k]
-                return toReactive(isRef(value) ? toValue(value) : value)
-            },
-            set: function reactiveSetter(newValue) {
-                const value = target[k]
-                if (isRef(value)) {
-                    value.value = newValue
-                } else {
-                    target[k] = newValue
-                }
-            }
-        })
+        defineReactive(_vm, target, k)
     }
 
     function set(newTarget, callback) {
         Object.assign(target, newTarget)
+        for (let key in target) {
+            if (!hasOwn(_vm, key)) {
+                defineReactive(_vm, target, key)
+            }
+        }
         callback()
     }
 
