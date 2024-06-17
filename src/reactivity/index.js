@@ -1,4 +1,4 @@
-import Vue, * as vueDefaultHandlers from "vue"
+import Vue, * as vueDefaultHandlers from "vue";
 import {
     __v_isRef,
     __v_isShallow,
@@ -32,7 +32,6 @@ class TransformReactive {
 }
 
 const version = vueDefaultHandlers.version || (vueDefaultHandlers.default && vueDefaultHandlers.default.version)
-
 
 function validateVersion() {
     const symbolRef = "."
@@ -274,7 +273,7 @@ class ObjectRefImpl extends RefImplComment {
     get value() {
         const value = this._object[this._key]
         const returnValue = value === void 0 ? this._defaultValue : value
-        return this[__v_isShallow] ? toRaw(returnResult) : toReactive(returnValue)
+        return this[__v_isShallow] ? toRaw(returnValue) : toReactive(returnValue)
     }
 
     set value(v) {
