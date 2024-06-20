@@ -1,4 +1,4 @@
-import Vue, * as vueDefaultHandlers from "vue"
+import Vue, * as vueDefaultHandlers from "vue";
 import {
     __v_isRef,
     __v_isShallow,
@@ -21,10 +21,11 @@ import {
     isObject2,
     def, getProto, toRawType, isFunction, isObject, toString,
     extend,
-    isPromise
+    isPromise,
+    NOOP
 } from "./shared"
 
-let app, observable, proxyVm, versionFlag = false
+let app, observable = Vue.observable, proxyVm, versionFlag = false
 
 class TransformReactive {
     constructor() {
@@ -32,7 +33,6 @@ class TransformReactive {
 }
 
 const version = vueDefaultHandlers.version || (vueDefaultHandlers.default && vueDefaultHandlers.default.version)
-
 
 function validateVersion() {
     const symbolRef = "."
@@ -274,7 +274,7 @@ class ObjectRefImpl extends RefImplComment {
     get value() {
         const value = this._object[this._key]
         const returnValue = value === void 0 ? this._defaultValue : value
-        return this[__v_isShallow] ? toRaw(returnResult) : toReactive(returnValue)
+        return this[__v_isShallow] ? toRaw(returnValue) : toReactive(returnValue)
     }
 
     set value(v) {
@@ -312,14 +312,13 @@ function warn(...args) {
 
 function getProxyVmOptions(key) {
     if (!proxyVm) {
-        warn("When installing plugins, it is necessary to configure proxyVm for proxy watcher Vue.use(TransformReactive, { proxyVm : VueComponent | VueApp })")
         return
     }
     return proxyVm[key]
 }
 
 function isCutSkip(target) {
-    return !!target[__v_cut_skip]
+    return !!target && target[__v_cut_skip]
 }
 
 function isRef(target) {
@@ -352,7 +351,7 @@ function setEffectDep(targetEffect, vue2Observer, key) {
     if (!hasOwn(value, 'deps')) {
         createDep(value)
     }
-    value.deps.set(targetEffect, 1)
+    value.deps.set(targetEffect, reactiveEffectId);
     targetEffect.deps.set(value, {
         key: key,
         get [__v_dep]() {
@@ -365,28 +364,48 @@ function trackEffect(dep, debuOptions) {
     if (activeEffect) {
         const deps = dep.deps
         if (deps && deps.has(activeEffect)) {
-            activeEffect.onTrack && activeEffect.onTrack(extend({ effect: activeEffect }, debuOptions))
+            activeEffect.onTrack && activeEffect.onTrack(extend({
+                watcher: activeEffect.effect,
+                effect: activeEffect
+            }, debuOptions))
         }
     }
 }
 
 function triggerEffect2(dep, debuOptions) {
     const deps = dep.deps
+    let _shouldSchedule = !deps
     if (deps) {
-        for (let [watcher] of deps) {
-            if (watcher.onTrigger) {
-                watcher.onTrigger(debuOptions)
+        for (let effect of deps.keys()) {
+            if (effect._shouldSchedule) {
+                _shouldSchedule = effect._shouldSchedule
+            }
+            if (effect._shouldSchedule && effect.scheduler) {
+                queueEffectSchedulers.push(() => {
+                    effect.scheduler()
+                })
+            }
+            effect._shouldSchedule = false
+            if (effect.onTrigger) {
+                effect.onTrigger(extend({
+                    watcher: effect.effect,
+                    effect: effect
+                }, debuOptions))
             }
         }
     }
+    return _shouldSchedule
 }
 
 function triggerEffect(vue2Observer, key, debuOptions) {
     setVue2ObserverTargetReactive(vue2Observer, key);
-    var _index = vue2Observer[key]._index
-    _index = (vue2Observer[key]._index = +!_index)
-    vue2Observer[key].value = observableValue[_index]
-    triggerEffect2(vue2Observer[key], debuOptions)
+    if (triggerEffect2(vue2Observer[key], debuOptions)) {
+        queueEffectSchedulers.push(() => {
+            var _index = vue2Observer[key]._index
+            _index = (vue2Observer[key]._index = +!_index)
+            vue2Observer[key].value = observableValue[_index]
+        })
+    }
 }
 
 function track(target, type, key) {
@@ -423,6 +442,7 @@ function trigger(target, type, key, newValue, oldValue) {
             }
             oldValue.clear()
         } else if (key === "length" && isArray(target)) {
+            deps.length = 0;
             const newLength = Number(newValue);
             for (var key2 in vue2Observer) {
                 if (!isSymbol(key2) && key2 >= newLength) {
@@ -462,19 +482,22 @@ function trigger(target, type, key, newValue, oldValue) {
                     break
             }
         }
+
+        pauseScheduling();
         if (deps.length) {
             for (let dep of deps) {
                 triggerEffect(vue2Observer, dep, {
-                    type, key, newValue, oldValue, targat: ctx.proxyTarget,
+                    type, key, newValue, oldValue, target: ctx.proxyTarget,
                 })
             }
         }
+        resetScheduling()
     }
 }
 
-function stopEffect(target) {
+function stopReactiveEffect(target) {
     if (target && target.deps) {
-        for (let [val] of target.deps) {
+        for (let val of target.deps.keys()) {
             val.deps.delete(target)
         }
         target.deps.clear()
@@ -524,93 +547,127 @@ function _traverse(val, seen) {
     }
 }
 
-let activeEffect;
+let activeEffect, reactiveEffectId = 0;
 
-function watch(fn, cb, options = {}) {
-    let watcher = {
-        parent: null,
-        onTrigger: options.onTrigger,
-        onTrack: options.onTrack,
+class ReactiveEffect {
+    constructor(fn, scheduler, options = {}) {
+        this.fn = fn;
+        this.active = true;
+        this.onTrack = options.onTrack;
+        this.onTrigger = options.onTrigger;
+        this.scheduler = scheduler;
+        this.onStop = options.onStop;
+        this._shouldSchedule = true
+        this.effect = options.effect || null
+        recordEffectScope(this)
+        reactiveEffectId++
     }
-    if (versionFlag) {
-        options.onTrigger = (options.onTrack = function ({ effect }) {
-            watcher.effect = effect
-        })
+    run() {
+        if (!this.active) return
+        stopReactiveEffect(this)
+        this.parent = activeEffect
+        activeEffect = this
+        try {
+            return this.fn()
+        } finally {
+            this._shouldSchedule = true
+            activeEffect = this.parent
+            this.parent = null
+        }
     }
-    const watchFn = getProxyVmOptions('$watch')
+    stop() {
+        this.active = true
+        stopReactiveEffect(this);
+        if (this.teardownInstance) {
+            this.teardownInstance.stop()
+        }
+    }
+    teardown() {
+        this.stop()
+    }
+}
+
+function createReactiveEffect(fn, cb, options = {}) {
+    const watchFn = getProxyVmOptions('$watch') || vueDefaultHandlers.watch || Vue.prototype.$watch
     if (watchFn) {
-        const caches = [fn];
-        const index = 1
+        const caches = [fn], index = 1, deepFlag = !!options.deep;
         fn = isFunction(fn) ? fn : () => {
             const _target = caches[0]
             return (caches[index] === void 0 ? (caches[index] = isRef(_target)) : caches[index]) ? _target.value : _target
         }
-        const deepFlag = !!options.deep
-        const flag2 = options.onTrack || options.onTrigger
-        const proxyFn = flag2 ? () => {
-            stopEffect(watcher)
-            watcher.parent = activeEffect
-            activeEffect = watcher
-            try {
-                const value = fn()
-                if (deepFlag) {
-                    traverse(value)
-                }
-                return value
-            } finally {
-                activeEffect = watcher.parent
-                watcher.parent = null
-            }
-        } : fn
+        let reactiveEffect = new ReactiveEffect(() => {
+            return deepFlag ? traverse(fn()) : fn()
+        }, () => void 0, options);
         const _options = {
             ...options,
             flush: hasOwn(options, 'flush') ? options.flush : options.sync ? "sync" : options.post ? "post" : "pre",
         }
-        if (flag2 && deepFlag) {
-            delete options.deep
+        if (deepFlag) {
+            delete _options.deep
+        }
+        if (versionFlag) {
+            _options.onTrigger = (_options.onTrack = function ({ effect }) {
+                reactiveEffect.effect = effect;
+            })
         }
         patchWatchOptions(_options, 'flush');
-        const args = [proxyFn, cb, _options]
-        let _r;
-        _r = { stop: isCutSkip(proxyVm) ? watchFn(...args) : watchFn.apply(proxyVm, args) }
-        recordEffectScope(_r)
-        watcher.wer = _r
+        const args = [reactiveEffect.run.bind(reactiveEffect), cb, _options]
+        let stopReactiveEffect = { stop: watchFn.apply(proxyVm, args) }
+        reactiveEffect.teardownInstance = stopReactiveEffect
         if (this && this instanceof vueDefaultHandlers.default) {
             const wr = {
                 teardown() {
-                    _r.stop()
+                    reactiveEffect.stop()
                 }
             }
-            if (this._scope && !this._watchers) {
-                if (this._scope.effects) {
-                    this._scope.effects.push(wr)
-                }
-            } else if (this._watchers) {
-                this._watchers.push(wr)
-            }
+            setInstanceEffects(this, wr)
         }
-        return _r.stop
+        return reactiveEffect
     }
 }
 
+function watch(fn, cb, options) {
+    return createReactiveEffect.apply(this, arguments).stop
+}
+
+function setInstanceEffects(instance, effect) {
+    if (instance._scope && !instance._watchers) {
+        if (instance._scope.effects) {
+            instance._scope.effects.push(effect)
+        }
+    } else if (instance._watchers) {
+        instance._watchers.push(effect)
+    }
+}
+
+function triggerComputedRef(target, newValue, oldValue) {
+    if (hasChanged(newValue, oldValue)) {
+        triggerRefValue(target, newValue, oldValue)
+    }
+    return newValue
+}
+
 function createComputed2(getter, setter, options) {
-    let _value, currentValue;
-    const vm = this
+    let _value;
+    const vm = this;
     const proxyComputed = {
         get value() {
-            const _target = proxyCtx
-            if (_target.watcher === null) {
-                const eft = effect.apply(vm)
-                eft.run(() => {
-                    currentValue = getter()
-                    return {}
-                }, () => {
-                    if (!hasChanged(currentValue, _value)) return
-                    triggerRefValue(proxyComputed, currentValue, _value)
-                    _value = currentValue
-                }, options || {})
-                _target.watcher = eft.watcher
-                proxyComputed.effect = _target.watcher
+            if (!proxyCtx.effect) {
+                const effect = createReactiveEffect.apply(vm, [() => {
+                    return getter()
+                }, (v) => {
+                    const oldValue = _value
+                    _value = v
+                    triggerComputedRef(proxyComputed, v, oldValue);
+
+                }, {
+                    ...options,
+                    immediate: true,
+                    sync: true,
+                    once: false
+                }])
+                proxyCtx.effect = effect;
+                proxyComputed.effect = effect
             }
             trackRefValue(proxyComputed)
             return _value
@@ -620,7 +677,6 @@ function createComputed2(getter, setter, options) {
         }
     }
     const proxyCtx = setReactiveProxyMap(proxyComputed)
-    proxyCtx.watcher = null
     def(proxyComputed, __v_isReadonly, !setter);
     def(proxyComputed, __v_isRef, true);
     setter = setter || (() => warn('computed setter is not define'))
@@ -678,9 +734,6 @@ function toRef(target, key, defaultValue, shallow) {
 }
 
 function toRaw(observed) {
-    if (isRef(observed)) {
-        return toValue(observed)
-    }
     const raw = observed && observed[__v_raw];
     return raw ? toRaw(raw) : observed;
 }
@@ -735,6 +788,29 @@ const isIntegerKey = (key) => isString(key) && key !== 'NaN' && key[0] !== '-' &
 
 const arrayInstrumentations = /* @__PURE__ */ createArrayInstrumentations();
 
+let shouldTrack = true;
+let pauseScheduleStack = 0;
+let trackStack = [];
+let queueEffectSchedulers = [];
+
+function pauseTracking() {
+    trackStack.push(shouldTrack);
+    shouldTrack = false;
+}
+function resetTracking() {
+    const last = trackStack.pop();
+    shouldTrack = last === void 0 ? true : last;
+}
+function pauseScheduling() {
+    pauseScheduleStack++;
+}
+function resetScheduling() {
+    pauseScheduleStack--;
+    while (!pauseScheduleStack && queueEffectSchedulers.length) {
+        queueEffectSchedulers.shift()();
+    }
+}
+
 function createArrayInstrumentations() {
     const instrumentations = {};
     ["includes", "indexOf", "lastIndexOf"].forEach((key) => {
@@ -749,6 +825,16 @@ function createArrayInstrumentations() {
             } else {
                 return res;
             }
+        };
+    });
+    ["push", "pop", "shift", "unshift", "splice"].forEach((key) => {
+        instrumentations[key] = function (...args) {
+            pauseTracking();
+            pauseScheduling();
+            const res = toRaw(this)[key].apply(this, args);
+            resetScheduling();
+            resetTracking();
+            return res;
         };
     });
     return instrumentations;
@@ -867,7 +953,11 @@ class MutableReactiveHandler extends BaseReactiveHandler {
     }
 
     ownKeys(target) {
-        track(target, "iterate", ITERATE_KEY);
+        track(
+            target,
+            "iterate",
+            isArray(target) ? "length" : ITERATE_KEY
+        );
         return Reflect.ownKeys(target);
     }
 }
@@ -1282,7 +1372,7 @@ function isProxy(value) {
 
 function markRaw(value) {
     if (Object.isExtensible(value)) {
-        def(value, "__v_skip", true);
+        def(value, __v_skip, true);
     }
     return value;
 }
@@ -1383,30 +1473,6 @@ function triggerReactive(ref2) {
     }
 }
 
-function effect() {
-    let est;
-    const _vm = this
-    return {
-        watcher: null,
-        stop() {
-            est && est.stop()
-        },
-        run(fn, cb, op = {}) {
-            this.stop()
-            est = effectScope()
-            const rs = est.run(() => {
-                return watch.apply(_vm, [fn, cb, {
-                    ...op,
-                    flush: op.flush || 'sync',
-                    immediate: true,
-                }])
-            })
-            this.watcher = est.effects[0] || null
-            return rs
-        }
-    }
-}
-
 function toVRef(target) {
     if (!isObject(target)) {
         warn(`toVRef(target) can only be used on objects.`)
@@ -1414,6 +1480,26 @@ function toVRef(target) {
     }
     return extend(target, {
         [__v_isRef]: true
+    })
+}
+
+function defineReactive(proxyTarget, target, key) {
+    if (!hasOwn(proxyTarget, key)) {
+        proxyTarget[key] = void 0;
+    }
+    Object.defineProperty(proxyTarget, key, {
+        get: function reactiveGetter() {
+            const value = target[key];
+            return toReactive(isRef(value) ? toValue(value) : value)
+        },
+        set: function reactiveSetter(newValue) {
+            const value = target[key];
+            if (isRef(value)) {
+                value.value = newValue
+            } else {
+                target[key] = newValue
+            }
+        }
     })
 }
 
@@ -1429,25 +1515,16 @@ function useState(target, vm) {
     target = toReactive(target)
     const _vm = vm || this
     for (let k in target) {
-        _vm[k] = void 0;
-        Object.defineProperty(_vm, k, {
-            get: function reactiveGetter() {
-                const value = target[k]
-                return toReactive(isRef(value) ? toValue(value) : value)
-            },
-            set: function reactiveSetter(newValue) {
-                const value = target[k]
-                if (isRef(value)) {
-                    value.value = newValue
-                } else {
-                    target[k] = newValue
-                }
-            }
-        })
+        defineReactive(_vm, target, k)
     }
 
     function set(newTarget, callback) {
         Object.assign(target, newTarget)
+        for (let key in target) {
+            if (!hasOwn(_vm, key)) {
+                defineReactive(_vm, target, key)
+            }
+        }
         callback()
     }
 
@@ -1514,7 +1591,57 @@ if (versionFlag) {
     })
 }
 
+class ComputedRefImpl {
+
+    constructor(getter, _setter, isReadonly2) {
+        this.getter = getter;
+        this._setter = _setter;
+        this[__v_isRef] = true;
+        this.effect = new ReactiveEffect(
+            () => getter(this._value),
+            () => triggerRefValue(this, this._value)
+        );
+        this[__v_isReadonly] = isReadonly2;
+        const proxyComputed = setReactiveProxyMap(this)
+        proxyComputed.effect = this.effect
+        proxyComputed.init = false
+        this.effect._shouldSchedule = false
+    }
+    get value() {
+        const self2 = toRaw(this)
+        if (!self2.effect._shouldSchedule && hasChanged(self2._value, self2._value = self2.effect.run())) {
+        }
+        trackRefValue(self2);
+        return self2._value;
+    }
+    set value(newValue) {
+        this._setter(newValue);
+    }
+}
+
+function computed2(getterOrOptions, debugOptions) {
+    let getter;
+    let setter;
+    const onlyGetter = isFunction(getterOrOptions);
+    if (onlyGetter) {
+        getter = getterOrOptions;
+        setter = () => {
+            warn("Write operation failed: computed value is readonly");
+        }
+    } else {
+        getter = getterOrOptions.get;
+        setter = getterOrOptions.set;
+    }
+    const cRef = new ComputedRefImpl(getter, setter, onlyGetter || !setter);
+    if (debugOptions) {
+        cRef.effect.onTrack = debugOptions.onTrack;
+        cRef.effect.onTrigger = debugOptions.onTrigger;
+    }
+    return cRef;
+}
+
 export {
+    computed2,
     EffectScope,
     toRaw,
     ref,
@@ -1541,7 +1668,7 @@ export {
     trigger,
     watchEffect,
     watchPostEffect,
-    watchSyncEffect, effectScope, effect, triggerRef, nextTick, triggerReactive, useObserverHandle, toVRef, useState
+    watchSyncEffect, effectScope, triggerRef, nextTick, triggerReactive, useObserverHandle, toVRef, useState
 }
 
 export default TransformReactive

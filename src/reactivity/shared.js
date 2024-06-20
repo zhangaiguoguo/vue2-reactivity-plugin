@@ -11,6 +11,7 @@ const ITERATE_KEY = Symbol("iterate");
 const MAP_KEY_ITERATE_KEY = Symbol("Map key iterate");
 const promiseThen = Promise.resolve()
 
+const NOOP = () => {}
 const isArray = Array.isArray
 const hasOwnProperty2 = Object.prototype.hasOwnProperty;
 const hasOwn = (val, key) => hasOwnProperty2.call(val, key);
@@ -76,5 +77,5 @@ export {
     isSet,
     isObject2,
     isDate,
-    def, getProto, toRawType, isFunction, isObject, toString, extend, MAP_KEY_ITERATE_KEY
+    def, getProto, toRawType, isFunction, isObject, toString, extend, MAP_KEY_ITERATE_KEY,NOOP
 }
