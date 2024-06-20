@@ -1373,6 +1373,7 @@ function isProxy(value) {
 function markRaw(value) {
     if (Object.isExtensible(value)) {
         def(value, __v_skip, true);
+        def(value, __v_skip, true);
     }
     return value;
 }
