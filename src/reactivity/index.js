@@ -1,5 +1,6 @@
 import Vue, * as vueDefaultHandlers from "vue";
 import {
+    __v_isSpecial,
     __v_isRef,
     __v_isShallow,
     __v_isReadonly,
@@ -227,7 +228,7 @@ function getReactiveProxyMap(target) {
 function setReactiveProxyMap(target, proxyTarget = target) {
     reactiveProxyMap.set(target, {
         proxyTarget: proxyTarget,
-        proxyObs: {}
+        proxyObserver: {}
     })
     return reactiveProxyMap.get(target)
 }
@@ -256,7 +257,7 @@ class RefImpl extends RefImplComment {
     }
 
     get [__v_dep]() {
-        const value = getReactiveProxyMap(this).proxyObs
+        const value = getReactiveProxyMap(this).proxyObserver
         const observer = value.value && value.value[__v_ob]
         return observer && observer[__v_dep]
     }
@@ -381,9 +382,7 @@ function triggerEffect2(dep, debuOptions) {
                 _shouldSchedule = effect._shouldSchedule
             }
             if (effect._shouldSchedule && effect.scheduler) {
-                queueEffectSchedulers.push(() => {
-                    effect.scheduler()
-                })
+                queueEffectSchedulers.push(effect.scheduler)
             }
             effect._shouldSchedule = false
             if (effect.onTrigger) {
@@ -397,23 +396,22 @@ function triggerEffect2(dep, debuOptions) {
     return _shouldSchedule
 }
 
-function triggerEffect(vue2Observer, key, debuOptions) {
-    setVue2ObserverTargetReactive(vue2Observer, key);
+function triggerEffect(reactiveProxyMap, key, debuOptions) {
+    setVue2ObserverTargetReactive(reactiveProxyMap, key);
+    const vue2Observer = reactiveProxyMap.proxyObserver;
     if (triggerEffect2(vue2Observer[key], debuOptions)) {
-        queueEffectSchedulers.push(() => {
-            var _index = vue2Observer[key]._index
-            _index = (vue2Observer[key]._index = +!_index)
-            vue2Observer[key].value = observableValue[_index]
-        })
     }
+    queueEffectSchedulers.push(() => {
+        vue2Observer[key]._notice()
+    })
 }
 
 function track(target, type, key) {
     if (reactiveProxyMap.has(target)) {
         let returnResult = null
         const ctx = reactiveProxyMap.get(target)
-        const vue2Observer = ctx.proxyObs
-        setVue2ObserverTargetReactive(vue2Observer, key)
+        const vue2Observer = ctx.proxyObserver
+        setVue2ObserverTargetReactive(ctx, key)
         switch (type) {
             case "has":
             case "get":
@@ -432,7 +430,7 @@ function track(target, type, key) {
 function trigger(target, type, key, newValue, oldValue) {
     if (reactiveProxyMap.has(target)) {
         const ctx = reactiveProxyMap.get(target)
-        const vue2Observer = ctx.proxyObs
+        const vue2Observer = ctx.proxyObserver
         const deps = [key]
         if (type === "clear") {
             deps.splice(0, 1, ITERATE_KEY)
@@ -483,15 +481,15 @@ function trigger(target, type, key, newValue, oldValue) {
             }
         }
 
-        pauseScheduling();
         if (deps.length) {
+            pauseScheduling();
             for (let dep of deps) {
-                triggerEffect(vue2Observer, dep, {
+                triggerEffect(ctx, dep, {
                     type, key, newValue, oldValue, target: ctx.proxyTarget,
                 })
             }
+            resetScheduling()
         }
-        resetScheduling()
     }
 }
 
@@ -560,7 +558,7 @@ class ReactiveEffect {
         this._shouldSchedule = true
         this.effect = options.effect || null
         recordEffectScope(this)
-        reactiveEffectId++
+        reactiveEffectId++;
     }
     run() {
         if (!this.active) return
@@ -595,9 +593,9 @@ function createReactiveEffect(fn, cb, options = {}) {
             const _target = caches[0]
             return (caches[index] === void 0 ? (caches[index] = isRef(_target)) : caches[index]) ? _target.value : _target
         }
-        let reactiveEffect = new ReactiveEffect(() => {
-            return deepFlag ? traverse(fn()) : fn()
-        }, () => void 0, options);
+
+        let reactiveEffect = new ReactiveEffect(deepFlag ? () => traverse(fn()) : () => fn(), () => void 0, options);
+
         const _options = {
             ...options,
             flush: hasOwn(options, 'flush') ? options.flush : options.sync ? "sync" : options.post ? "post" : "pre",
@@ -647,27 +645,22 @@ function triggerComputedRef(target, newValue, oldValue) {
     return newValue
 }
 
+function validateObserverDep(target) {
+    if (!isObject(target)) return false
+    if (hasOwn(target, 'deps') && target.deps.size) {
+        return true
+    }
+    if (hasOwn(target, __v_ob) && target[__v_ob].dep.subs.length) {
+        return true
+    }
+    return validateObserverDep(target._value)
+}
+
 function createComputed2(getter, setter, options) {
-    let _value;
+    let _value, _oldValue;
     const vm = this;
     const proxyComputed = {
         get value() {
-            if (!proxyCtx.effect) {
-                const effect = createReactiveEffect.apply(vm, [() => {
-                    return getter()
-                }, (v) => {
-                    const oldValue = _value
-                    _value = v
-                    triggerComputedRef(proxyComputed, v, oldValue);
-                }, {
-                    ...options,
-                    immediate: true,
-                    sync: true,
-                    once: false
-                }])
-                proxyCtx.effect = effect;
-                proxyComputed.effect = effect
-            }
             trackRefValue(proxyComputed)
             return _value
         },
@@ -676,14 +669,33 @@ function createComputed2(getter, setter, options) {
         }
     }
     const proxyCtx = setReactiveProxyMap(proxyComputed)
+    const effect = createReactiveEffect.apply(vm, [() => {
+        const observer = proxyCtx.proxyObserver;
+        if (hasOwn(observer, 'value')) {
+            if (!validateObserverDep(observer.value)) {
+                return _value
+            }
+        }
+        _oldValue = _value
+        return (_value = getter());
+    }, () => {
+        triggerComputedRef(proxyComputed, _value, _oldValue);
+    }, {
+        onTrigger: options && options.onTrigger,
+        onTrack: options && options.onTrack,
+        sync: true
+    }])
+    proxyCtx.effect = effect;
+    proxyComputed.effect = effect
     def(proxyComputed, __v_isReadonly, !setter);
     def(proxyComputed, __v_isRef, true);
+    def(proxyCtx, __v_isSpecial, true);
     setter = setter || (() => warn('computed setter is not define'))
     return proxyComputed
 }
 
 //squalor
-function computed2(target, options) {
+function computed(target, options) {
     if (validate()) {
         const done = isObject(target)
         const getter = done ? target.get : target
@@ -841,10 +853,26 @@ function createArrayInstrumentations() {
 
 const observableValue = [{}, {}].map(Object.freeze);
 
-function setVue2ObserverTargetReactive(vue2Observer, key) {
-    if (!(hasOwn(vue2Observer, key))) {
-        vue2Observer[key] = observable({ value: observableValue[0] })
-        vue2Observer[key]._index = 0
+function isSpecialRef(target) {
+    if (target) {
+        return hasOwn(target, __v_isSpecial)
+    }
+    return !!target
+}
+
+function setVue2ObserverTargetReactive(reactiveProxyMap, key) {
+    const observers = reactiveProxyMap.proxyObserver;
+    let observableValue2 = observableValue
+    if (isSpecialRef(reactiveProxyMap)) {
+        observableValue2 = new Array(2).fill({})
+    }
+    if (!(hasOwn(observers, key))) {
+        const row = (observers[key] = observable({ value: observableValue2[0] }))
+        row._value = observableValue2[0];
+        row._index = 0;
+        row._notice = () => {
+            row._value = (row.value = observableValue2[row._index = +!row._index])
+        }
         return false
     }
     return true
@@ -1591,59 +1619,7 @@ if (versionFlag) {
     })
 }
 
-class ComputedRefImpl {
-
-    constructor(getter, _setter, isReadonly2) {
-        this.getter = getter;
-        this._setter = _setter;
-        this[__v_isRef] = true;
-        this.effect = new ReactiveEffect(
-            () => getter(this._value),
-            () => void 0
-        );
-        this[__v_isReadonly] = isReadonly2;
-        const proxyComputed = setReactiveProxyMap(this)
-        proxyComputed.effect = this.effect
-        proxyComputed.init = false
-        this.effect._shouldSchedule = false
-    }
-    get value() {
-        const self2 = toRaw(this)
-        const oldValue = self2._value
-        if (!self2.effect._shouldSchedule && hasChanged(self2._value, self2._value = self2.effect.run())) {
-            triggerRefValue(self2, self2._value, oldValue);
-        }
-        trackRefValue(self2);
-        return self2._value;
-    }
-    set value(newValue) {
-        this._setter(newValue);
-    }
-}
-
-function computed(getterOrOptions, debugOptions) {
-    let getter;
-    let setter;
-    const onlyGetter = isFunction(getterOrOptions);
-    if (onlyGetter) {
-        getter = getterOrOptions;
-        setter = () => {
-            warn("Write operation failed: computed value is readonly");
-        }
-    } else {
-        getter = getterOrOptions.get;
-        setter = getterOrOptions.set;
-    }
-    const cRef = new ComputedRefImpl(getter, setter, onlyGetter || !setter);
-    if (debugOptions) {
-        cRef.effect.onTrack = debugOptions.onTrack;
-        cRef.effect.onTrigger = debugOptions.onTrigger;
-    }
-    return cRef;
-}
-
 export {
-    computed,
     EffectScope,
     toRaw,
     ref,
@@ -1659,7 +1635,7 @@ export {
     isRef,
     toValue,
     isReadonly,
-    computed2,
+    computed,
     isShallow,
     markRaw,
     proxyRefs,

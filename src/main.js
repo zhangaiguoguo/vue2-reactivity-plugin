@@ -6,7 +6,7 @@ Vue.config.productionTip = false
 // eslint-disable-next-line
 const app = new Vue({
   // render: h => h(App),
-  render: h => h('div', [toValue(arrayComputed), h("button", {
+  render: h => h('div', [toValue(0 || arrayComputed), h("button", {
     on: {
       click() { array.a++ }
     },
@@ -28,7 +28,7 @@ function Fn() {
 //   proxyVm: app
 // })
 
-import { reactive, watchPostEffect, computed2 as computed, watchSyncEffect } from '@/reactivity'
+import { reactive, watchPostEffect, computed, watchSyncEffect } from '@/reactivity'
 import { } from 'vue'
 const array = reactive({ a: 1 });
 
@@ -55,10 +55,9 @@ watchSyncEffect(() => {
   }
 })
 
-// watchSyncEffect(() => {
-//   array.a
-//   console.log(3)
-// })
+watchSyncEffect(() => {
+  array.a
+})
 
 window.array = array
 

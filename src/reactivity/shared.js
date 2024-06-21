@@ -1,4 +1,5 @@
 const __v_isRef = "__v_isRef"
+const __v_isSpecial = "__v_isSpecial"
 const __v_isShallow = "__v_isShallow"
 const __v_isReadonly = "__v_isReadonly"
 const __v_raw = "__v_raw"
@@ -11,7 +12,7 @@ const ITERATE_KEY = Symbol("iterate");
 const MAP_KEY_ITERATE_KEY = Symbol("Map key iterate");
 const promiseThen = Promise.resolve()
 
-const NOOP = () => {}
+const NOOP = () => { }
 const isArray = Array.isArray
 const hasOwnProperty2 = Object.prototype.hasOwnProperty;
 const hasOwn = (val, key) => hasOwnProperty2.call(val, key);
@@ -77,5 +78,5 @@ export {
     isSet,
     isObject2,
     isDate,
-    def, getProto, toRawType, isFunction, isObject, toString, extend, MAP_KEY_ITERATE_KEY,NOOP
+    def, getProto, toRawType, isFunction, isObject, toString, extend, MAP_KEY_ITERATE_KEY, NOOP, __v_isSpecial
 }
