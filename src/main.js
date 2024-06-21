@@ -13,7 +13,11 @@ const app = new Vue({
     attrs: {
       num: toValue(array.a)
     }
-  }, '点击')])
+  }, '点击'), [h("br"), h("br")], (array.flag || false) + "", h("button", {
+    on: {
+      click() { array.flag = !array.flag }
+    },
+  }, '切换')])
 })
 
 function Fn() {
@@ -29,20 +33,32 @@ import { } from 'vue'
 const array = reactive({ a: 1 });
 
 const arrayComputed = computed(() => {
-  console.log('computed dispatch');
+  console.log('computed dispatch', 1);
   return array.a
 });
 
 arrayComputed.value
 
 watchSyncEffect(() => {
-  console.log(arrayComputed.value, 'watchSyncEffect');
+  if (array.flag) {
+    console.log(2, 'watchSyncEffect true');
+  } else {
+    arrayComputed.value
+    console.log(2, 'watchSyncEffect false');
+  }
 }, {
+  onTrigger(target) {
+    // console.log(target)
+  },
+  onTrack(target) {
+    // console.log(target);
+  }
 })
 
-watchSyncEffect(() => {
-  console.log(array.a)
-})
+// watchSyncEffect(() => {
+//   array.a
+//   console.log(3)
+// })
 
 window.array = array
 
