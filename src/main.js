@@ -11,10 +11,7 @@ const app = new Vue({
       click() { array.a++ }
     },
     attrs: {
-      aaa: toValue(array.a)
-    },
-    slots: {
-      default: [h('div', 1)]
+      num: toValue(array.a)
     }
   }, '点击')])
 })
@@ -27,7 +24,7 @@ function Fn() {
 //   proxyVm: app
 // })
 
-import { reactive, watchPostEffect, computed2 as computed } from '@/reactivity'
+import { reactive, watchPostEffect, computed2 as computed, watchSyncEffect } from '@/reactivity'
 import { } from 'vue'
 const array = reactive({ a: 1 });
 
@@ -38,17 +35,14 @@ const arrayComputed = computed(() => {
 
 arrayComputed.value
 
-watchPostEffect(() => {
-  console.log(arrayComputed.value);
+watchSyncEffect(() => {
+  console.log(arrayComputed.value, 'watchSyncEffect');
 }, {
-  onTrigger(target) {
-    console.log(target)
-  },
-  onTrack(target) {
-    // console.log(target);
-  }
 })
 
+watchSyncEffect(() => {
+  console.log(array.a)
+})
 
 window.array = array
 

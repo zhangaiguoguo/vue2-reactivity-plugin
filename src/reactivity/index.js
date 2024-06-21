@@ -659,7 +659,6 @@ function createComputed2(getter, setter, options) {
                     const oldValue = _value
                     _value = v
                     triggerComputedRef(proxyComputed, v, oldValue);
-
                 }, {
                     ...options,
                     immediate: true,
@@ -683,8 +682,8 @@ function createComputed2(getter, setter, options) {
     return proxyComputed
 }
 
-
-function computed(target, options) {
+//squalor
+function computed2(target, options) {
     if (validate()) {
         const done = isObject(target)
         const getter = done ? target.get : target
@@ -1600,7 +1599,7 @@ class ComputedRefImpl {
         this[__v_isRef] = true;
         this.effect = new ReactiveEffect(
             () => getter(this._value),
-            () => triggerRefValue(this, this._value)
+            () => void 0
         );
         this[__v_isReadonly] = isReadonly2;
         const proxyComputed = setReactiveProxyMap(this)
@@ -1610,7 +1609,9 @@ class ComputedRefImpl {
     }
     get value() {
         const self2 = toRaw(this)
+        const oldValue = self2._value
         if (!self2.effect._shouldSchedule && hasChanged(self2._value, self2._value = self2.effect.run())) {
+            triggerRefValue(self2, self2._value, oldValue);
         }
         trackRefValue(self2);
         return self2._value;
@@ -1620,7 +1621,7 @@ class ComputedRefImpl {
     }
 }
 
-function computed2(getterOrOptions, debugOptions) {
+function computed(getterOrOptions, debugOptions) {
     let getter;
     let setter;
     const onlyGetter = isFunction(getterOrOptions);
@@ -1642,7 +1643,7 @@ function computed2(getterOrOptions, debugOptions) {
 }
 
 export {
-    computed2,
+    computed,
     EffectScope,
     toRaw,
     ref,
@@ -1658,7 +1659,7 @@ export {
     isRef,
     toValue,
     isReadonly,
-    computed,
+    computed2,
     isShallow,
     markRaw,
     proxyRefs,
