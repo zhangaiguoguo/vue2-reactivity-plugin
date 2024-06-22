@@ -37,13 +37,13 @@ const arrayComputed = computed(() => {
   return array.a
 });
 
-arrayComputed.value
+// arrayComputed.value;
 
 watchSyncEffect(() => {
   if (array.flag) {
     console.log(2, 'watchSyncEffect true');
   } else {
-    arrayComputed.value
+    arrayComputed.value;
     console.log(2, 'watchSyncEffect false');
   }
 }, {

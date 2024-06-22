@@ -71,10 +71,10 @@ const watchSyncEffect = function (effectFn, options) {
 
 function createDoWatchEffect(effectFn, options, flush) {
     return watch(effectFn, () => 1, {
-        ...options,
         immediate: true,
         flush: flush || "pre",
-        deep: false
+        onTrigger: options && options.onTrigger,
+        onTrack: options && options.onTrack
     })
 }
 
@@ -343,12 +343,12 @@ function createDep(target) {
     return target.deps
 }
 
-function setEffectDep(targetEffect, vue2Observer, key) {
+function setEffectDep(targetEffect, observerProxy, key) {
     if (!targetEffect) return
     if (!targetEffect.deps) {
         createDep(targetEffect)
     }
-    const value = vue2Observer[key]
+    const value = observerProxy[key]
     if (!hasOwn(value, 'deps')) {
         createDep(value)
     }
@@ -378,12 +378,7 @@ function triggerEffect2(dep, debuOptions) {
     let _shouldSchedule = !deps
     if (deps) {
         for (let effect of deps.keys()) {
-            if (effect._shouldSchedule) {
-                _shouldSchedule = effect._shouldSchedule
-            }
-            if (effect._shouldSchedule && effect.scheduler) {
-                queueEffectSchedulers.push(effect.scheduler)
-            }
+            _shouldSchedule = _shouldSchedule || effect._shouldSchedule
             effect._shouldSchedule = false
             if (effect.onTrigger) {
                 effect.onTrigger(extend({
@@ -398,39 +393,37 @@ function triggerEffect2(dep, debuOptions) {
 
 function triggerEffect(reactiveProxyMap, key, debuOptions) {
     setVue2ObserverTargetReactive(reactiveProxyMap, key);
-    const vue2Observer = reactiveProxyMap.proxyObserver;
-    if (triggerEffect2(vue2Observer[key], debuOptions)) {
+    const proxyObserver = reactiveProxyMap.proxyObserver;
+    if (triggerEffect2(proxyObserver[key], debuOptions)) {
+        queueEffectSchedulers.push(() => {
+            proxyObserver[key]._notice()
+        })
     }
-    queueEffectSchedulers.push(() => {
-        vue2Observer[key]._notice()
-    })
 }
 
 function track(target, type, key) {
     if (reactiveProxyMap.has(target)) {
-        let returnResult = null
         const ctx = reactiveProxyMap.get(target)
-        const vue2Observer = ctx.proxyObserver
-        setVue2ObserverTargetReactive(ctx, key)
+        const proxyObserver = ctx.proxyObserver
+        setVue2ObserverTargetReactive(ctx, key);
         switch (type) {
             case "has":
             case "get":
             case "iterate":
-                returnResult = vue2Observer[key].value
+                proxyObserver[key].value;
                 break
         }
-        setEffectDep(activeEffect, vue2Observer, key)
-        trackEffect(vue2Observer[key], {
+        setEffectDep(activeEffect, proxyObserver, key)
+        trackEffect(proxyObserver[key], {
             target: target, type: type, key: key
         })
-        return returnResult ? void 0 : void 0
     }
 }
 
 function trigger(target, type, key, newValue, oldValue) {
     if (reactiveProxyMap.has(target)) {
         const ctx = reactiveProxyMap.get(target)
-        const vue2Observer = ctx.proxyObserver
+        const proxyObserver = ctx.proxyObserver
         const deps = [key]
         if (type === "clear") {
             deps.splice(0, 1, ITERATE_KEY)
@@ -442,7 +435,7 @@ function trigger(target, type, key, newValue, oldValue) {
         } else if (key === "length" && isArray(target)) {
             deps.length = 0;
             const newLength = Number(newValue);
-            for (var key2 in vue2Observer) {
+            for (var key2 in proxyObserver) {
                 if (!isSymbol(key2) && key2 >= newLength) {
                     deps.push(key2)
                 }
@@ -451,7 +444,7 @@ function trigger(target, type, key, newValue, oldValue) {
             switch (type) {
                 case "set":
                     if (isMap(target)) {
-                        if (ITERATE_KEY in vue2Observer) {
+                        if (ITERATE_KEY in proxyObserver) {
                             deps.push(ITERATE_KEY)
                         }
                     }
@@ -661,38 +654,42 @@ function createComputed2(getter, setter, options) {
     const vm = this;
     const proxyComputed = {
         get value() {
-            trackRefValue(proxyComputed)
+            if (!proxyCtx.effect) {
+                const effect = createReactiveEffect.apply(vm, [() => {
+                    const observer = proxyCtx.proxyObserver;
+                    if (hasOwn(observer, 'value')) {
+                        if (!validateObserverDep(observer.value)) {
+                            return _value
+                        }
+                    }
+                    _oldValue = _value
+                    return (_value = getter());
+                }, () => {
+                    triggerComputedRef(proxyComputed, _value, _oldValue);
+                }, {
+                    onTrigger: options && options.onTrigger,
+                    onTrack: options && options.onTrack,
+                    sync: true
+                }])
+                proxyCtx.effect = effect;
+                proxyComputed.effect = effect
+            }
+            trackRefValue(proxyComputed);
             return _value
         },
         set value(v) {
             return setter(v)
         }
     }
-    const proxyCtx = setReactiveProxyMap(proxyComputed)
-    const effect = createReactiveEffect.apply(vm, [() => {
-        const observer = proxyCtx.proxyObserver;
-        if (hasOwn(observer, 'value')) {
-            if (!validateObserverDep(observer.value)) {
-                return _value
-            }
-        }
-        _oldValue = _value
-        return (_value = getter());
-    }, () => {
-        triggerComputedRef(proxyComputed, _value, _oldValue);
-    }, {
-        onTrigger: options && options.onTrigger,
-        onTrack: options && options.onTrack,
-        sync: true
-    }])
-    proxyCtx.effect = effect;
-    proxyComputed.effect = effect
+    const proxyCtx = setReactiveProxyMap(proxyComputed);
     def(proxyComputed, __v_isReadonly, !setter);
     def(proxyComputed, __v_isRef, true);
     def(proxyCtx, __v_isSpecial, true);
     setter = setter || (() => warn('computed setter is not define'))
     return proxyComputed
 }
+
+window.triggerComputedRef = triggerComputedRef
 
 //squalor
 function computed(target, options) {
@@ -861,13 +858,13 @@ function isSpecialRef(target) {
 }
 
 function setVue2ObserverTargetReactive(reactiveProxyMap, key) {
-    const observers = reactiveProxyMap.proxyObserver;
+    const proxyObserver = reactiveProxyMap.proxyObserver;
     let observableValue2 = observableValue
     if (isSpecialRef(reactiveProxyMap)) {
-        observableValue2 = new Array(2).fill({})
+        observableValue2 = [{}, {}]
     }
-    if (!(hasOwn(observers, key))) {
-        const row = (observers[key] = observable({ value: observableValue2[0] }))
+    if (!hasOwn(proxyObserver, key)) {
+        const row = (proxyObserver[key] = observable({ value: observableValue2[0] }));
         row._value = observableValue2[0];
         row._index = 0;
         row._notice = () => {
