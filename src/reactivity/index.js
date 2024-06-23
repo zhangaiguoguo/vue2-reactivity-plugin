@@ -649,32 +649,43 @@ function validateObserverDep(target) {
     return validateObserverDep(target._value)
 }
 
-function createComputed2(getter, setter, options) {
+function createComputed2(getter, setter, { onTrack, onTrigger }) {
     let _value, _oldValue;
+    let value = true
+    let _shouldSchedule = true
     const vm = this;
     const proxyComputed = {
+        get deps() {
+            return proxyCtx && proxyCtx.proxyObserver.value && proxyCtx.proxyObserver.value.deps
+        },
         get value() {
+            const observer = proxyCtx.proxyObserver;
+            trackRefValue(proxyComputed);
+            if (_shouldSchedule === false && !validateObserverDep(observer.value)) {
+                proxyCtx.effect = null
+            }
             if (!proxyCtx.effect) {
                 const effect = createReactiveEffect.apply(vm, [() => {
-                    const observer = proxyCtx.proxyObserver;
-                    if (hasOwn(observer, 'value')) {
+                    if (_shouldSchedule && hasOwn(observer, 'value')) {
                         if (!validateObserverDep(observer.value)) {
-                            return _value
+                            _shouldSchedule = false
+                            return value = !value
                         }
                     }
+                    _shouldSchedule = true
                     _oldValue = _value
-                    return (_value = getter());
+                    _value = getter()
+                    return value = !value
                 }, () => {
                     triggerComputedRef(proxyComputed, _value, _oldValue);
                 }, {
-                    onTrigger: options && options.onTrigger,
-                    onTrack: options && options.onTrack,
+                    onTrigger: onTrigger,
+                    onTrack: onTrack,
                     sync: true
                 }])
                 proxyCtx.effect = effect;
-                proxyComputed.effect = effect
+                proxyComputed.effect = proxyCtx.effect
             }
-            trackRefValue(proxyComputed);
             return _value
         },
         set value(v) {
@@ -689,10 +700,8 @@ function createComputed2(getter, setter, options) {
     return proxyComputed
 }
 
-window.triggerComputedRef = triggerComputedRef
-
-//squalor
-function computed(target, options) {
+/* squalor */
+function computed(target, options = {}) {
     if (validate()) {
         const done = isObject(target)
         const getter = done ? target.get : target
@@ -863,6 +872,7 @@ function setVue2ObserverTargetReactive(reactiveProxyMap, key) {
     if (isSpecialRef(reactiveProxyMap)) {
         observableValue2 = [{}, {}]
     }
+    observableValue2 = [{}, {}]
     if (!hasOwn(proxyObserver, key)) {
         const row = (proxyObserver[key] = observable({ value: observableValue2[0] }));
         row._value = observableValue2[0];

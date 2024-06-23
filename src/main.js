@@ -11,7 +11,7 @@ const app = new Vue({
       click() { array.a++ }
     },
     attrs: {
-      num: toValue(array.a)
+      num: toValue(0||array.a)
     }
   }, '点击'), [h("br"), h("br")], (array.flag || false) + "", h("button", {
     on: {
@@ -37,7 +37,7 @@ const arrayComputed = computed(() => {
   return array.a
 });
 
-// arrayComputed.value;
+arrayComputed.value;
 
 watchSyncEffect(() => {
   if (array.flag) {
@@ -56,7 +56,8 @@ watchSyncEffect(() => {
 })
 
 watchSyncEffect(() => {
-  array.a
+  arrayComputed.value && array.flag
+  console.log(3, 'watchSyncEffect false');
 })
 
 window.array = array
