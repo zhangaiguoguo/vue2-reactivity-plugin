@@ -18,7 +18,7 @@ const app = new Vue({
     },
   }, '切换')]),
   // eslint-disable-next-line no-dupe-keys
-  render: h => h(App),
+  // render: h => h(App),
 })
 
 function Fn() {
@@ -44,7 +44,7 @@ watchSyncEffect(() => {
   if (array.flag) {
     console.log(2, 'watchSyncEffect true');
   } else {
-    arrayComputed.value;
+    // arrayComputed.value;
     console.log(2, 'watchSyncEffect false');
   }
 }, {
@@ -57,7 +57,7 @@ watchSyncEffect(() => {
 })
 
 watchSyncEffect(() => {
-  arrayComputed.value && array.flag
+  // arrayComputed.value && array.flag
   console.log(3, 'watchSyncEffect false');
 })
 

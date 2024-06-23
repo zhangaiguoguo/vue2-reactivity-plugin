@@ -665,7 +665,7 @@ function createComputed2(getter, setter, { onTrack, onTrigger }) {
                 proxyCtx.effect = null
             }
             if (!proxyCtx.effect) {
-                const effect = createReactiveEffect.apply(vm, [() => {
+                proxyCtx.effect = createReactiveEffect.apply(vm, [() => {
                     if (_shouldSchedule && hasOwn(observer, 'value')) {
                         if (!validateObserverDep(observer.value)) {
                             _shouldSchedule = false
@@ -682,8 +682,7 @@ function createComputed2(getter, setter, { onTrack, onTrigger }) {
                     onTrigger: onTrigger,
                     onTrack: onTrack,
                     sync: true
-                }])
-                proxyCtx.effect = effect;
+                }]);
                 proxyComputed.effect = proxyCtx.effect
             }
             return _value
