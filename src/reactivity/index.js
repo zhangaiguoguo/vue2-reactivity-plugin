@@ -1588,7 +1588,7 @@ const expose = {
     readonly,
     computed,
     markRaw,
-    shallowRef, useState
+    shallowRef, useState,nextTick
 }
 
 const VuePrototype = vueDefaultHandlers.default.prototype
