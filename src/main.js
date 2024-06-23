@@ -5,7 +5,6 @@ import TransformReactive, { toValue } from '@/reactivity'
 Vue.config.productionTip = false
 // eslint-disable-next-line
 const app = new Vue({
-  // render: h => h(App),
   render: h => h('div', [toValue(0 || arrayComputed), h("button", {
     on: {
       click() { array.a++ }
@@ -17,7 +16,9 @@ const app = new Vue({
     on: {
       click() { array.flag = !array.flag }
     },
-  }, '切换')])
+  }, '切换')]),
+  // eslint-disable-next-line no-dupe-keys
+  render: h => h(App),
 })
 
 function Fn() {
