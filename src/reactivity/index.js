@@ -488,7 +488,7 @@ function trigger(target, type, key, newValue, oldValue) {
             if (isIntegerKey(key)) {
               deps.push("length");
             } else {
-              warn(`${key} is not a valid array key.`);
+              // warn(`${key} is not a valid array key.`);
             }
           }
           break;
