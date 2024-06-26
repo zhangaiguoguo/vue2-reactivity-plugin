@@ -33,10 +33,13 @@ import { reactive, watchPostEffect, computed, watchSyncEffect } from '@/reactivi
 import { } from 'vue'
 const array = reactive({ a: 1 });
 
-const arrayComputed = computed(() => {
+const arrayComputed = app.computed(() => {
   console.log('computed dispatch', 1);
   return array.a
+},{
 });
+
+console.log(app)
 
 arrayComputed.value;
 
@@ -44,7 +47,7 @@ watchSyncEffect(() => {
   if (array.flag) {
     console.log(2, 'watchSyncEffect true');
   } else {
-    // arrayComputed.value;
+    arrayComputed.value;
     console.log(2, 'watchSyncEffect false');
   }
 }, {
@@ -57,7 +60,7 @@ watchSyncEffect(() => {
 })
 
 watchSyncEffect(() => {
-  // arrayComputed.value && array.flag
+  arrayComputed.value && array.flag
   console.log(3, 'watchSyncEffect false');
 })
 
