@@ -338,7 +338,7 @@ function isCutSkip(target) {
 function isRef(target) {
   if (target) {
     try {
-      return [__v_isRef] in target;
+      return __v_isRef in target;
     } catch { }
   }
   return false;
