@@ -968,10 +968,10 @@ function setVue2ObserverTargetReactive(reactiveProxyMap, key) {
   const proxyObserver = reactiveProxyMap.proxyObserver;
   let observableValue2 = observableValue;
   let flag = false
-  if ((flag = isSpecialRef(reactiveProxyMap))) {
-    observableValue2 = [{}, {}];
-  }
   if (!hasOwn(proxyObserver, key)) {
+    if ((flag = isSpecialRef(reactiveProxyMap))) {
+      observableValue2 = [{}, {}];
+    }
     const row = (proxyObserver[key] = observable({
       value: observableValue2[0],
     }));
