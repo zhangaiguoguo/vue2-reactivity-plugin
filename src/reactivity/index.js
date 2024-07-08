@@ -219,7 +219,7 @@ function createReactiveHandler(target) {
   };
 }
 
-class RefImplComment {
+class RefImplCommon {
   constructor(shallow) {
     this[__v_isShallow] = !!shallow;
     this[__v_isRef] = true;
@@ -246,7 +246,7 @@ function setReactiveProxyMap(target, proxyTarget = target) {
   return reactiveProxyMap.get(target);
 }
 
-class RefImpl extends RefImplComment {
+class RefImpl extends RefImplCommon {
   constructor(value, shallow) {
     super(shallow);
     this._rawValue = value;
@@ -276,7 +276,7 @@ class RefImpl extends RefImplComment {
   }
 }
 
-class ObjectRefImpl extends RefImplComment {
+class ObjectRefImpl extends RefImplCommon {
   constructor(object, key, defaultValue, shallow) {
     super(shallow);
     this._object = object;
@@ -296,7 +296,7 @@ class ObjectRefImpl extends RefImplComment {
   }
 }
 
-class CustomRef extends RefImplComment {
+class CustomRef extends RefImplCommon {
   constructor(factory) {
     super(false);
     const hooks = createReactiveHandler(this);
