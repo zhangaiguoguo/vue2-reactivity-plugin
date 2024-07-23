@@ -71,24 +71,24 @@ const nextTick = getVueDefaultHandler("nextTick", function () {
 });
 
 const watchEffect = function (effectFn, options) {
-  return createDoWatchEffect(effectFn, options);
+    return createDoWatchEffect.apply(this,[effectFn, options]);
 };
 
 const watchPostEffect = function (effectFn, options) {
-  return createDoWatchEffect(effectFn, options, "post");
+    return createDoWatchEffect.apply(this,[effectFn, options, "post"]);
 };
 
 const watchSyncEffect = function (effectFn, options) {
-  return createDoWatchEffect(effectFn, options, "sync");
+    return createDoWatchEffect.apply(this,[effectFn, options, "sync"]);
 };
 
 function createDoWatchEffect(effectFn, options, flush) {
-  return watch(effectFn, () => 1, {
-    immediate: true,
-    flush: flush || "pre",
-    onTrigger: options && options.onTrigger,
-    onTrack: options && options.onTrack,
-  });
+    return watch.apply(this,[effectFn, () => 1, {
+        immediate: true,
+        flush: flush || "pre",
+        onTrigger: options && options.onTrigger,
+        onTrack: options && options.onTrack,
+    }]);
 }
 
 let activeEffectScope;
