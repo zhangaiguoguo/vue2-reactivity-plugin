@@ -298,18 +298,18 @@ class ObjectRefImpl extends RefImplCommon {
 
 class CustomRef extends RefImplCommon {
   constructor(factory) {
-    super(false);
-    const hooks = createReactiveHandler(this);
-    const result = factory(hooks.useTrack, hooks.useTrigger);
-    const getter = result && result.get;
-    const setter = result && result.set;
-    if (!isFunction(getter) || !isFunction(setter)) {
-      warn("CustomRef return = { get : Function , set : Function }");
-      return {};
+        super(false);
+        const hooks = createReactiveHandler(this);
+        const result = factory(hooks.useTrack, hooks.useTrigger);
+        const getter = result && result.get;
+        const setter = result && result.set;
+        if (!isFunction(getter) || !isFunction(setter)) {
+            warn("CustomRef factory(onTrack, onTrigger) -> return = {get: Function, set: Function}");
+            return {};
+        }
+        this._getter = getter;
+        this._setter = setter;
     }
-    this._getter = getter;
-    this._setter = setter;
-  }
 
   get value() {
     return this._getter();
