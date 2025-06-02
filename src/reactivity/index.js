@@ -1823,4 +1823,46 @@ export {
   useState,
 };
 
+{
+    const vm = new Vue({
+        render() {
+            return null
+        }
+    });
+    const div = document.createElement("div")
+    vm.$mount(div)
+    const {$data} = vm;
+    const Observer = $data[__v_ob].constructor
+    const Dep = $data[__v_ob][__v_dep].constructor
+    console.log(vm)
+    const Watcher = vm._watcher.constructor
+
+    const observer = new Observer({});
+    const obj = {
+        a: 1,
+        b: 2
+    }
+    const watcher = new Watcher(null, () => {
+        console.log(obj.a)
+        observer.dep.depend({
+            key: "a",
+            target: obj,
+            type: "get"
+        })
+    });
+
+    setTimeout(() => {
+        obj.a = 2
+        observer.dep.notify({
+            key: "a",
+            newValue: 2,
+            oldValue: 1,
+            target: obj,
+            type: "set"
+        })
+    }, 1000)
+
+    console.log(observer, obj, watcher)
+}
+
 export default TransformReactive;
